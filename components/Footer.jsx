@@ -1,4 +1,4 @@
-import { Github, Twitter, Linkedin, Instagram, Leaf } from "lucide-react";
+import { Code2, MessageCircle, Briefcase, Camera, Leaf } from "lucide-react";
 
 export default function Footer() {
     return (
@@ -27,10 +27,10 @@ export default function Footer() {
                     <div>
                         <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Follow</h4>
                         <div className="flex gap-3 text-slate-400">
-                            <Github size={17} className="hover:text-white" />
-                            <Twitter size={17} className="hover:text-white" />
-                            <Linkedin size={17} className="hover:text-white" />
-                            <Instagram size={17} className="hover:text-white" />
+                            <Code2 size={17} className="hover:text-white" />
+                            <MessageCircle size={17} className="hover:text-white" />
+                            <Briefcase size={17} className="hover:text-white" />
+                            <Camera size={17} className="hover:text-white" />
                         </div>
                     </div>
                 </div>
