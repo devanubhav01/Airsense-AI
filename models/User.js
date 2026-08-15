@@ -3,7 +3,8 @@ import mongoose, { Schema, models, model } from "mongoose";
 const UserSchema = new Schema(
     {
         name: { type: String, required: true },
-        email: { type: String, required: true, unique: true },
+        email: { type: String, unique: true, sparse: true }, // required hata diya, sparse taaki multiple null allow ho
+        phone: { type: String, unique: true, sparse: true },
         age: { type: Number },
         state: { type: String },
         city: { type: String },
