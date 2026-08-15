@@ -1,8 +1,15 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
-import { Lock } from "lucide-react";
+import { signIn as nextAuthSignIn } from "next-auth/react";
+import {
+    RecaptchaVerifier,
+    signInWithPhoneNumber,
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+} from "firebase/auth";
+import { auth } from "@/lib/firebase";
+import { Lock, Phone as PhoneIcon } from "lucide-react";
 import { SiGoogle, SiGithub } from "@icons-pack/react-simple-icons";
 import Card from "@/components/Card";
 import Button from "@/components/Button";
@@ -11,57 +18,87 @@ import { STATE_CITY_MAP } from "@/lib/data";
 
 export default function LoginPage() {
     const router = useRouter();
-    const [step, setStep] = useState(1);
-    const [email, setEmail] = useState("");
+    const [mode, setMode] = useState("choice"); // choice | phone-input | phone-otp
+    const [phone, setPhone] = useState("");
     const [otp, setOtp] = useState(["", "", "", "", "", ""]);
-    const [otpError, setOtpError] = useState(false);
+    const [otpError, setOtpError] = useState("");
+    const [confirmationResult, setConfirmationResult] = useState(null);
+    const [loading, setLoading] = useState(false);
     const [timer, setTimer] = useState(30);
-    const [state, setState] = useState("");
-    const [profileCity, setProfileCity] = useState("");
 
     useEffect(() => {
-        if (step !== 2 || timer <= 0) return;
+        if (mode !== "phone-otp" || timer <= 0) return;
         const t = setTimeout(() => setTimer((v) => v - 1), 1000);
         return () => clearTimeout(t);
-    }, [step, timer]);
+    }, [mode, timer]);
+
+    function setupRecaptcha() {
+        if (!window.recaptchaVerifier) {
+            window.recaptchaVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+                size: "invisible",
+            });
+        }
+    }
+
+    async function sendPhoneOtp() {
+        setOtpError("");
+        setLoading(true);
+        try {
+            setupRecaptcha();
+            const fullPhone = phone.startsWith("+") ? phone : `+91${phone}`;
+            const result = await signInWithPhoneNumber(auth, fullPhone, window.recaptchaVerifier);
+            setConfirmationResult(result);
+            setMode("phone-otp");
+            setTimer(30);
+        } catch (err) {
+            console.error(err);
+            setOtpError("Could not send OTP. Check the number and try again.");
+        } finally {
+            setLoading(false);
+        }
+    }
 
     function updateOtp(i, val) {
         if (!/^[0-9]?$/.test(val)) return;
         const next = [...otp];
         next[i] = val;
         setOtp(next);
-        setOtpError(false);
+        setOtpError("");
         if (val && i < 5) document.getElementById(`otp-${i + 1}`)?.focus();
     }
 
-    function verifyOtp() {
-        if (otp.join("").length < 6) { setOtpError(true); return; }
-        setStep(3);
-    }
+    async function verifyPhoneOtp() {
+        const code = otp.join("");
+        if (code.length < 6) { setOtpError("Enter all 6 digits."); return; }
+        setLoading(true);
+        try {
+            const userCredential = await confirmationResult.confirm(code);
+            const idToken = await userCredential.user.getIdToken();
 
-    function completeProfile() {
-        // TODO: email/OTP flow abhi Firebase se real nahi hua (Part E mein karenge).
-        // Filhaal ye sirf UI demo hai — real login Google/GitHub se hi ho raha hai.
-        router.push("/dashboard");
-    }
+            const res = await nextAuthSignIn("firebase", {
+                idToken,
+                redirect: false,
+            });
 
-    const progress = ["Verify", "Confirm", "Profile"];
+            if (res?.ok) {
+                router.push("/dashboard");
+            } else {
+                setOtpError("Login failed. Try again.");
+            }
+        } catch (err) {
+            console.error(err);
+            setOtpError("Incorrect code. Check the digits and try again.");
+        } finally {
+            setLoading(false);
+        }
+    }
 
     return (
         <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-slate-50 px-5 py-16">
             <Card className="w-full max-w-md">
-                {step === 3 && (
-                    <div className="mb-6 flex items-center gap-2">
-                        {progress.map((p, i) => (
-                            <div key={i} className="flex items-center gap-2 flex-1">
-                                <div className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${i <= 2 ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-400"}`}>{i + 1}</div>
-                                {i < progress.length - 1 && <div className="h-px flex-1 bg-slate-200" />}
-                            </div>
-                        ))}
-                    </div>
-                )}
+                <div id="recaptcha-container"></div>
 
-                {step === 1 && (
+                {mode === "choice" && (
                     <>
                         <span className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><Lock size={18} /></span>
                         <h2 className="text-xl font-semibold text-slate-900" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Welcome to AirSense AI</h2>
@@ -69,40 +106,59 @@ export default function LoginPage() {
 
                         <div className="mt-6 space-y-2.5">
                             <button
-                                onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+                                onClick={() => nextAuthSignIn("google", { callbackUrl: "/dashboard" })}
                                 className="flex w-full items-center justify-center gap-2.5 rounded-full border border-slate-300 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
                             >
                                 <SiGoogle size={16} color="#4285F4" />
                                 Continue with Google
                             </button>
                             <button
-                                onClick={() => signIn("github", { callbackUrl: "/dashboard" })}
+                                onClick={() => nextAuthSignIn("github", { callbackUrl: "/dashboard" })}
                                 className="flex w-full items-center justify-center gap-2.5 rounded-full border border-slate-300 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
                             >
                                 <SiGithub size={16} color="#181717" />
                                 Continue with GitHub
                             </button>
-                        </div>
-
-                        <div className="my-5 flex items-center gap-3">
-                            <div className="h-px flex-1 bg-slate-200" />
-                            <span className="text-xs text-slate-400">or continue with email</span>
-                            <div className="h-px flex-1 bg-slate-200" />
-                        </div>
-
-                        <div>
-                            <Field label="Email address">
-                                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className={inputCls} />
-                            </Field>
-                            <Button variant="primary" className="mt-5 w-full" disabled={!email.includes("@")} onClick={() => setStep(2)}>Send OTP</Button>
+                            <button
+                                onClick={() => setMode("phone-input")}
+                                className="flex w-full items-center justify-center gap-2.5 rounded-full border border-slate-300 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                            >
+                                <PhoneIcon size={16} />
+                                Continue with Phone
+                            </button>
                         </div>
                     </>
                 )}
 
-                {step === 2 && (
+                {mode === "phone-input" && (
                     <>
-                        <h2 className="text-xl font-semibold text-slate-900" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Verify your email</h2>
-                        <p className="mt-1 text-sm text-slate-500">OTP sent to <span className="text-slate-800">{email || "you@example.com"}</span></p>
+                        <h2 className="text-xl font-semibold text-slate-900" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Enter your phone number</h2>
+                        <p className="mt-1 text-sm text-slate-500">We'll send you a one-time code via SMS.</p>
+                        <div className="mt-6">
+                            <Field label="Phone number">
+                                <input
+                                    type="tel"
+                                    value={phone}
+                                    onChange={(e) => setPhone(e.target.value)}
+                                    placeholder="+91 98xxxxxxxx"
+                                    className={inputCls}
+                                />
+                            </Field>
+                            {otpError && <p className="mt-2 text-xs text-red-500">{otpError}</p>}
+                            <Button variant="primary" className="mt-5 w-full" disabled={!phone || loading} onClick={sendPhoneOtp}>
+                                {loading ? "Sending..." : "Send OTP"}
+                            </Button>
+                            <button onClick={() => setMode("choice")} className="mt-3 w-full text-center text-xs text-slate-500 hover:underline">
+                                Back
+                            </button>
+                        </div>
+                    </>
+                )}
+
+                {mode === "phone-otp" && (
+                    <>
+                        <h2 className="text-xl font-semibold text-slate-900" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Verify your phone</h2>
+                        <p className="mt-1 text-sm text-slate-500">OTP sent to <span className="text-slate-800">{phone}</span></p>
                         <div className="mt-6 flex justify-between gap-2">
                             {otp.map((v, i) => (
                                 <input
@@ -112,46 +168,15 @@ export default function LoginPage() {
                                 />
                             ))}
                         </div>
-                        {otpError && <p className="mt-2 text-xs text-red-500">Incorrect code. Check the digits and try again.</p>}
+                        {otpError && <p className="mt-2 text-xs text-red-500">{otpError}</p>}
                         <div className="mt-3 text-xs text-slate-500">
                             {timer > 0 ? `Resend OTP in 00:${String(timer).padStart(2, "0")}` : (
-                                <button onClick={() => setTimer(30)} className="text-indigo-600 hover:underline">Resend OTP</button>
+                                <button onClick={sendPhoneOtp} className="text-indigo-600 hover:underline">Resend OTP</button>
                             )}
                         </div>
-                        <Button variant="primary" className="mt-5 w-full" onClick={verifyOtp}>Verify & Continue</Button>
-                    </>
-                )}
-
-                {step === 3 && (
-                    <>
-                        <h2 className="text-xl font-semibold text-slate-900" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Complete your profile</h2>
-                        <p className="mt-1 text-sm text-slate-500">One-time setup so we can tailor forecasts to you.</p>
-                        <div className="mt-6 space-y-4">
-                            <Field label="Full name"><input className={inputCls} placeholder="Anubhav Singh" /></Field>
-                            <div className="grid grid-cols-2 gap-3">
-                                <Field label="Age"><input type="number" className={inputCls} placeholder="20" /></Field>
-                                <Field label="Email">
-                                    <input className={`${inputCls} cursor-not-allowed bg-slate-50 opacity-70`} value={email || "you@example.com"} readOnly />
-                                </Field>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <Field label="State">
-                                    <select value={state} onChange={(e) => { setState(e.target.value); setProfileCity(""); }} className={inputCls}>
-                                        <option value="">Select state</option>
-                                        {Object.keys(STATE_CITY_MAP).map((s) => <option key={s} value={s}>{s}</option>)}
-                                    </select>
-                                </Field>
-                                <Field label="City">
-                                    <select value={profileCity} onChange={(e) => setProfileCity(e.target.value)} disabled={!state} className={`${inputCls} disabled:opacity-50`}>
-                                        <option value="">Select city</option>
-                                        {(STATE_CITY_MAP[state] || []).map((c) => <option key={c} value={c}>{c}</option>)}
-                                    </select>
-                                </Field>
-                            </div>
-                            <Button variant="primary" className="w-full" disabled={!state || !profileCity} onClick={completeProfile}>
-                                Complete Profile & Continue
-                            </Button>
-                        </div>
+                        <Button variant="primary" className="mt-5 w-full" disabled={loading} onClick={verifyPhoneOtp}>
+                            {loading ? "Verifying..." : "Verify & Continue"}
+                        </Button>
                     </>
                 )}
             </Card>
