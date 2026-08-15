@@ -9,7 +9,7 @@ import { useAuth } from "./AuthContext";
 export default function Header() {
     const pathname = usePathname();
     const router = useRouter();
-    const { loggedIn, setLoggedIn } = useAuth();
+    const { loggedIn, user, signOut } = useAuth();
     const [mobileOpen, setMobileOpen] = useState(false);
     const [avatarOpen, setAvatarOpen] = useState(false);
 
@@ -29,6 +29,13 @@ export default function Header() {
         }
         setMobileOpen(false);
     }
+
+    function handleLogout() {
+        signOut({ callbackUrl: "/" });
+        setAvatarOpen(false);
+    }
+
+    const initials = user?.name ? user.name.slice(0, 2).toUpperCase() : "U";
 
     return (
         <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur-md">
@@ -64,7 +71,7 @@ export default function Header() {
                             </button>
                             <div className="relative">
                                 <button onClick={() => setAvatarOpen((v) => !v)} className="flex items-center gap-1.5 rounded-full border border-slate-300 py-1 pl-1 pr-2.5 hover:border-slate-400">
-                                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-600">AS</span>
+                                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-600">{initials}</span>
                                     <ChevronDown size={14} className="text-slate-500" />
                                 </button>
                                 {avatarOpen && (
@@ -75,7 +82,7 @@ export default function Header() {
                                         <Link href="/account" onClick={() => setAvatarOpen(false)} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50">
                                             <FileText size={14} /> My Reports
                                         </Link>
-                                        <button onClick={() => { setLoggedIn(false); router.push("/"); setAvatarOpen(false); }} className="flex w-full items-center gap-2 border-t border-slate-200 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-slate-50">
+                                        <button onClick={handleLogout} className="flex w-full items-center gap-2 border-t border-slate-200 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-slate-50">
                                             <LogOut size={14} /> Logout
                                         </button>
                                     </div>
@@ -107,7 +114,7 @@ export default function Header() {
                             ) : (
                                 <>
                                     <Button variant="ghost" className="flex-1" onClick={() => go("/account")}>Account</Button>
-                                    <Button variant="danger" className="flex-1" onClick={() => { setLoggedIn(false); go("/"); }}>Logout</Button>
+                                    <Button variant="danger" className="flex-1" onClick={handleLogout}>Logout</Button>
                                 </>
                             )}
                         </div>
