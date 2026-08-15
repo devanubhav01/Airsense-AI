@@ -1,5 +1,16 @@
-import { SiGithub, SiX, SiLinkedin, SiInstagram } from "@icons-pack/react-simple-icons";
+import { SiGithub, SiX, SiInstagram } from "@icons-pack/react-simple-icons";
 import { Leaf } from "lucide-react";
+
+function LinkedInBadge() {
+    return (
+        <span
+            className="flex h-[17px] w-[17px] items-center justify-center rounded-[3px] bg-slate-400 text-[10px] font-bold text-slate-900 hover:bg-white transition-colors"
+            style={{ fontFamily: "Arial, sans-serif" }}
+        >
+            in
+        </span>
+    );
+}
 
 export default function Footer() {
     return (
@@ -27,10 +38,10 @@ export default function Footer() {
                     </div>
                     <div>
                         <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Follow</h4>
-                        <div className="flex gap-3 text-slate-400">
+                        <div className="flex items-center gap-3 text-slate-400">
                             <a href="#" aria-label="GitHub" className="hover:text-white"><SiGithub size={17} color="currentColor" /></a>
                             <a href="#" aria-label="X (Twitter)" className="hover:text-white"><SiX size={17} color="currentColor" /></a>
-                            <a href="#" aria-label="LinkedIn" className="hover:text-white"><SiLinkedin size={17} color="currentColor" /></a>
+                            <a href="#" aria-label="LinkedIn"><LinkedInBadge /></a>
                             <a href="#" aria-label="Instagram" className="hover:text-white"><SiInstagram size={17} color="currentColor" /></a>
                         </div>
                     </div>
