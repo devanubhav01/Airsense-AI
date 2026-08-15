@@ -19,20 +19,14 @@ const handler = NextAuth({
         CredentialsProvider({
             id: "firebase",
             name: "Firebase",
-            credentials: {
-                idToken: { label: "ID Token", type: "text" },
-            },
+            credentials: { idToken: { label: "ID Token", type: "text" } },
             async authorize(credentials) {
                 try {
                     const decoded = await adminAuth.verifyIdToken(credentials.idToken);
                     await dbConnect();
-
                     let dbUser = await User.findOne(
-                        decoded.phone_number
-                            ? { phone: decoded.phone_number }
-                            : { email: decoded.email }
+                        decoded.phone_number ? { phone: decoded.phone_number } : { email: decoded.email }
                     );
-
                     if (!dbUser) {
                         dbUser = await User.create({
                             name: decoded.name || decoded.phone_number || decoded.email || "User",
@@ -41,39 +35,56 @@ const handler = NextAuth({
                             authProvider: decoded.phone_number ? "phone" : "email",
                         });
                     }
-
-                    return {
-                        id: dbUser._id.toString(),
-                        name: dbUser.name,
-                        email: dbUser.email,
-                        phone: dbUser.phone,
-                    };
+                    return { id: dbUser._id.toString(), name: dbUser.name, email: dbUser.email, phone: dbUser.phone };
                 } catch (err) {
                     console.error("Firebase token verification failed:", err);
                     return null;
                 }
             },
         }),
+
+        // DEV-ONLY: bypasses Firebase, accepts any number with fixed OTP.
+        // ⚠️ REMOVE THIS BEFORE PRODUCTION DEPLOY (Step 8).
+        ...(process.env.NODE_ENV !== "production"
+            ? [
+                CredentialsProvider({
+                    id: "dev-phone",
+                    name: "Dev Phone (testing only)",
+                    credentials: {
+                        phone: { label: "Phone", type: "text" },
+                        otp: { label: "OTP", type: "text" },
+                    },
+                    async authorize(credentials) {
+                        if (credentials.otp !== "123456") return null;
+
+                        await dbConnect();
+                        let dbUser = await User.findOne({ phone: credentials.phone });
+                        if (!dbUser) {
+                            dbUser = await User.create({
+                                name: credentials.phone,
+                                phone: credentials.phone,
+                                authProvider: "phone",
+                            });
+                        }
+                        return { id: dbUser._id.toString(), name: dbUser.name, email: dbUser.email, phone: dbUser.phone };
+                    },
+                }),
+            ]
+            : []),
     ],
     callbacks: {
         async signIn({ user, account }) {
-            if (account.provider === "firebase") return true; // already handled in authorize()
+            if (account.provider === "firebase" || account.provider === "dev-phone") return true;
             await dbConnect();
             const existingUser = await User.findOne({ email: user.email });
             if (!existingUser) {
-                await User.create({
-                    name: user.name,
-                    email: user.email,
-                    authProvider: account.provider,
-                });
+                await User.create({ name: user.name, email: user.email, authProvider: account.provider });
             }
             return true;
         },
         async session({ session, token }) {
             await dbConnect();
-            const dbUser = await User.findOne(
-                token.email ? { email: token.email } : { phone: token.phone }
-            );
+            const dbUser = await User.findOne(token.email ? { email: token.email } : { phone: token.phone });
             if (dbUser) {
                 session.user.id = dbUser._id.toString();
                 session.user.phone = dbUser.phone;
@@ -92,9 +103,7 @@ const handler = NextAuth({
         },
     },
     session: { strategy: "jwt" },
-    pages: {
-        signIn: "/login",
-    },
+    pages: { signIn: "/login" },
     secret: process.env.NEXTAUTH_SECRET,
 });
 
