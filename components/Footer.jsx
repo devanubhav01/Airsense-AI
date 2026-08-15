@@ -1,4 +1,5 @@
-import { Code2, MessageCircle, Briefcase, Camera, Leaf } from "lucide-react";
+import { SiGithub, SiX, SiLinkedin, SiInstagram } from "@icons-pack/react-simple-icons";
+import { Leaf } from "lucide-react";
 
 export default function Footer() {
     return (
@@ -27,10 +28,10 @@ export default function Footer() {
                     <div>
                         <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Follow</h4>
                         <div className="flex gap-3 text-slate-400">
-                            <Code2 size={17} className="hover:text-white" />
-                            <MessageCircle size={17} className="hover:text-white" />
-                            <Briefcase size={17} className="hover:text-white" />
-                            <Camera size={17} className="hover:text-white" />
+                            <a href="#" aria-label="GitHub" className="hover:text-white"><SiGithub size={17} color="currentColor" /></a>
+                            <a href="#" aria-label="X (Twitter)" className="hover:text-white"><SiX size={17} color="currentColor" /></a>
+                            <a href="#" aria-label="LinkedIn" className="hover:text-white"><SiLinkedin size={17} color="currentColor" /></a>
+                            <a href="#" aria-label="Instagram" className="hover:text-white"><SiInstagram size={17} color="currentColor" /></a>
                         </div>
                     </div>
                 </div>
