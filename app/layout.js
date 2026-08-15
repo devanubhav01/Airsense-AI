@@ -2,6 +2,7 @@ import "./globals.css";
 import { AuthProvider } from "@/components/AuthContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import ChatWidget from "@/components/ChatWidget";
 
 export const metadata = {
   title: "AirSense AI",
@@ -16,6 +17,7 @@ export default function RootLayout({ children }) {
           <Header />
           {children}
           <Footer />
+          <ChatWidget />
         </AuthProvider>
       </body>
     </html>

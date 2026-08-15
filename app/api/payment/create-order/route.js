@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { connectDB } from "@/lib/mongodb";
+import dbConnect from "@/lib/mongodb";
 import { razorpay } from "@/lib/razorpay";
-import Report from "@/lib/models/Report";
+import Report from "@/models/Report";
 
 export async function POST(request) {
     try {
-        await connectDB();
+        await dbConnect();
         const body = await request.json();
         const { userId, city, deliveryEmail, amount = 49 } = body;
 
@@ -34,7 +34,6 @@ export async function POST(request) {
                 orderId: order.id,
                 amount: order.amount,
                 currency: order.currency,
-                keyId: process.env.RAZORPAY_KEY_ID,
                 reportId: report._id,
             },
         });

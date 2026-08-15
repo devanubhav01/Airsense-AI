@@ -1,15 +1,16 @@
-import mongoose, { Schema, models, model } from "mongoose";
+import mongoose from "mongoose";
 
-const ReportSchema = new Schema(
+const ReportSchema = new mongoose.Schema(
     {
-        userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-        type: { type: String, required: true },
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        type: { type: String, default: "7-Day Forecast Report" },
+        city: { type: String, required: true },
         status: { type: String, enum: ["Pending", "Delivered", "Failed"], default: "Pending" },
-        date: { type: Date, default: Date.now },
-        city: { type: String },
-        fileUrl: { type: String },
+        orderId: { type: String },
+        amount: { type: Number, default: 49 },
+        deliveryEmail: { type: String, required: true },
     },
     { timestamps: true }
 );
 
-export default models.Report || model("Report", ReportSchema);
+export default mongoose.models.Report || mongoose.model("Report", ReportSchema);
