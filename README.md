@@ -1,4 +1,4 @@
-# 🌫️ AirSense AI
+# AirSense AI
 
 **Instrument-grade air quality forecasting for Indian cities — powered by AI.**
 
