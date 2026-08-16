@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
-import Alert from "@/lib/models/Alert";
+import Alert from "@/models/Alert";
 
 export async function GET(request) {
     try {
