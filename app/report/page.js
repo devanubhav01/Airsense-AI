@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Script from "next/script";
@@ -10,7 +10,7 @@ import Card from "@/components/Card";
 import Button from "@/components/Button";
 import Field, { inputCls } from "@/components/Field";
 
-export default function ReportPage() {
+function ReportPageContent() {
     const router = useRouter();
     const { data: session } = useSession();
     const searchParams = useSearchParams();
@@ -39,7 +39,6 @@ export default function ReportPage() {
         setPaying(true);
 
         try {
-            // 1. Create order + Pending report on our server
             const orderRes = await fetch("/api/payment/create-order", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -55,7 +54,6 @@ export default function ReportPage() {
 
             const { orderId: rzpOrderId, amount, currency } = orderJson.data;
 
-            // 2. Open Razorpay Checkout
             const options = {
                 key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
                 amount,
@@ -67,7 +65,6 @@ export default function ReportPage() {
                 theme: { color: "#4F46E5" },
                 method: { upi: method === "upi", card: method === "card", netbanking: method === "netbanking" },
                 handler: async function (response) {
-                    // 3. Verify signature on our server
                     try {
                         const verifyRes = await fetch("/api/payment/verify", {
                             method: "POST",
@@ -211,5 +208,17 @@ export default function ReportPage() {
                 </Card>
             </div>
         </>
+    );
+}
+
+export default function ReportPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-slate-50">
+                <Loader2 size={24} className="animate-spin text-indigo-600" />
+            </div>
+        }>
+            <ReportPageContent />
+        </Suspense>
     );
 }
