@@ -4,7 +4,7 @@
 
 AirSense AI is a full-stack air quality intelligence platform that delivers real-time AQI data, 7-day forecasts, pollution heatmaps, smart alerts, and AI-powered insights for 50+ Indian cities.
 
-🔗 **Live Demo:** [airsense-ai-wqur-fawn.vercel.app](https://airsense-ai-rho.vercel.app)
+🔗 **Live Demo:**(https://airsense-ai-rho.vercel.app)
 
 ---
 
