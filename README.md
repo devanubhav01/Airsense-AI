@@ -4,6 +4,9 @@
 
 AirSense AI is a full-stack air quality intelligence platform that delivers real-time AQI data, 7-day forecasts, pollution heatmaps, smart alerts, and AI-powered insights for 50+ Indian cities.
 
+🎥 Demo Video
+
+▶️ Watch AirSense AI Demo : https://drive.google.com/file/d/1-MGN4W5VSpoGCNGScyuDLtdq4wbRjeRR/view?usp=sharing
 🔗 **Live Demo:**(https://airsense-ai-rho.vercel.app)
 
 ---
@@ -90,6 +93,19 @@ airsense-ai/
 ## 📸 Screenshots
 
 > Add dashboard, forecast, and report screenshots here for a stronger visual overview.
+<img width="1919" height="1029" alt="Screenshot 2026-08-19 011929" src="https://github.com/user-attachments/assets/190b618f-19c4-4ce2-a6cf-850113b6f22d" />
+
+<img width="1917" height="1023" alt="Screenshot 2026-08-19 012037" src="https://github.com/user-attachments/assets/4a9b70c2-d36e-4dc2-bbda-504040e49694" />
+
+<img width="1916" height="976" alt="Screenshot 2026-08-19 012053" src="https://github.com/user-attachments/assets/892a438e-b834-4bd7-902e-d89b7f8d44da" />
+
+<img width="1919" height="1029" alt="Screenshot 2026-08-19 012244" src="https://github.com/user-attachments/assets/fc25aff7-cd2b-4d48-a795-4b1980f8807b" />
+
+<img width="1595" height="891" alt="Screenshot 2026-08-19 012307" src="https://github.com/user-attachments/assets/46b0a61c-9573-449d-8c0e-eedd9a82542e" />
+
+<img width="1917" height="1027" alt="Screenshot 2026-08-19 012014" src="https://github.com/user-attachments/assets/e511d45d-4b74-4339-9de0-17ec85a4b917" />
+
+<img width="1533" height="966" alt="Screenshot 2026-08-19 014814" src="https://github.com/user-attachments/assets/9f9ea172-9b41-4386-9c45-ea7dddd5863d" />
 
 ---
 
