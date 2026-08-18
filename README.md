@@ -17,6 +17,7 @@ AirSense AI is a full-stack air quality intelligence platform that delivers real
 - **AI Chatbot — AirBot** — A Google Gemini-powered assistant that answers air quality and health-related queries in natural language.
 - **Detailed PDF Reports** — On-demand, downloadable pollutant breakdowns with health guidance, generated via `@react-pdf/renderer`.
 - **Secure Authentication** — Google & GitHub OAuth login via NextAuth.js.
+- **Secure User Database** — User profiles and account information are securely stored in **MongoDB Atlas** using **Mongoose**, with data easily managed through **MongoDB Compass** during development.
 - **Payments** — Integrated Razorpay for premium report/subscription purchases.
 - **Email Delivery** — Automated report and alert delivery via Gmail SMTP.
 
@@ -29,6 +30,9 @@ AirSense AI is a full-stack air quality intelligence platform that delivers real
 | Framework      | Next.js (App Router)                              |
 | Styling        | Tailwind CSS                                       |
 | Authentication | NextAuth.js (Google & GitHub OAuth)               |
+| Database       | MongoDB Atlas                                      |
+| ODM            | Mongoose                                           |
+| Database Tool  | MongoDB Compass                                    |
 | AI / Chatbot   | Google Gemini API                                  |
 | Air Quality Data | WAQI API                                         |
 | Payments       | Razorpay                                           |
