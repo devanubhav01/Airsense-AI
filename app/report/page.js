@@ -600,7 +600,9 @@ function ReportPageContent() {
 
                             <p className="mt-2 text-center text-[10px] leading-relaxed text-slate-400">
 
-                                Disclaimer: This payment is in test mode. You will not be charged real money , UPI currently doesn’t work in Test Mode. Please select any other payment option (Net Banking, Wallet, etc.) and choose any bank. The payment will be successful in Test Mode, and the report will be sent to your registered email.
+                                Disclaimer: This payment is in test mode. You will not be charged real money , 
+                                UPI currently doesn’t work in Test Mode. Please select any other payment option (Net Banking, Wallet, etc.)
+                                and choose any bank. The payment will be successful in Test Mode, and the report will be sent to your registered email.
 
                             </p>
 
