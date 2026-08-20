@@ -17,16 +17,16 @@ export default function LandingPage() {
   const band = getBand(cityData.aqi);
 
   const features = [
-    { icon: TrendingUp, title: "AQI Forecasting", desc: "7-day predictive readouts modeled on meteorological + emissions data." },
-    { icon: MapPin, title: "Pollution Heatmaps", desc: "Zone-level PM2.5/PM10 visualisation across your city, updated hourly." },
-    { icon: Bell, title: "Smart Alerts", desc: "Threshold-based warnings the moment air quality tips into your risk band." },
+    { icon: TrendingUp, title: "AQI Forecasting", desc: "7-day hybrid forecasts combining live station data, weather signals and a transparent forecast engine." },
+    { icon: MapPin, title: "Pollution Heatmaps", desc: "Live WAQI station-grid visualisation with real zone observations, refreshed hourly." },
+    { icon: Bell, title: "Smart Alerts", desc: "Scheduled email alerts for severe AQI, daily summaries and weekly forecast digests." },
     { icon: FileText, title: "Detailed Reports", desc: "Downloadable pollutant breakdowns with health guidance, on demand." },
   ];
   const steps = ["Sign Up", "Select City", "View Dashboard", "Download Report"];
   const stats = [
     { n: "50+", l: "Cities Tracked" },
-    { n: "10,000+", l: "Users Alerted" },
-    { n: "95%", l: "Forecast Accuracy" },
+    { n: "Live", l: "Station Network" },
+    { n: "3", l: "Alert Automations" },
     { n: "24/7", l: "Live Monitoring" },
   ];
 
