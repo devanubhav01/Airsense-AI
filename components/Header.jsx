@@ -18,6 +18,7 @@ export default function Header() {
         { label: "Dashboard", href: "/dashboard" },
         { label: "Reports", href: "/report" },
         { label: "Alerts", href: "/alerts" },
+        { label: "Gov Analytics", href: "/admin" },
     ];
 
     function go(href) {
