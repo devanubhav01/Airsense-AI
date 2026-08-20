@@ -210,12 +210,7 @@ export default function DashboardPage() {
     cityData.forecast7Day &&
     cityData.forecast7Day.length > 0
       ? cityData.forecast7Day
-      : [
-          {
-            day: "Today",
-            aqi: cityData.aqi
-          }
-        ];
+      : [{ day: "Today", aqi: cityData.aqi, confidence: 70 }];
 
   const tomorrow =
     forecast[1]?.aqi ??
@@ -496,47 +491,38 @@ export default function DashboardPage() {
 
           </div>
 
-          <div className="mt-4 grid h-56 grid-cols-6 gap-1.5 overflow-hidden rounded-xl">
-
-            {Array.from({
-              length: 24
-            }).map((_, i) => {
-
-              const seedVal =
-                (cityData.aqi +
-                  i * 37) %
-                500;
-
-              const zoneBand =
-                getBand(seedVal);
-
-              return (
-
-                <div
-                  key={i}
-                  style={{
-                    backgroundColor:
-                      zoneBand.hex,
-
-                    opacity:
-                      0.5 +
-                      (i % 3) *
-                        0.15
-                  }}
-                  className="rounded-md"
-                />
-
-              );
-
-            })}
-
+          <div className="relative mt-4 h-56 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+            {cityData.stations?.length ? (
+              cityData.stations.map((station) => {
+                const lats = cityData.stations.map((s) => s.lat);
+                const lons = cityData.stations.map((s) => s.lon);
+                const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+                const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+                const x = maxLon === minLon ? 50 : ((station.lon - minLon) / (maxLon - minLon)) * 92 + 4;
+                const y = maxLat === minLat ? 50 : (1 - (station.lat - minLat) / (maxLat - minLat)) * 82 + 8;
+                const band = getBand(station.aqi);
+                const value = station.aqi;
+                return (
+                  <div
+                    key={station.uid}
+                    title={`${station.station} · AQI ${station.aqi}`}
+                    className="absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-lg"
+                    style={{ left: `${x}%`, top: `${y}%`, background: band.hex, opacity: 0.88 }}
+                  >
+                    <span className="flex h-full items-center justify-center text-[9px] font-bold text-white">{value}</span>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="flex h-full items-center justify-center text-xs text-slate-400">Waiting for live WAQI station grid…</div>
+            )}
+            <div className="absolute bottom-2 left-2 rounded-md bg-white/90 px-2 py-1 text-[10px] text-slate-500 shadow">
+              Live WAQI stations · {city}
+            </div>
           </div>
 
           <p className="mt-3 text-xs text-slate-500">
-
-            Zone-level {view} intensity across{" "}
-            {city} · darker = higher concentration
-
+            Real station observations inside the city bounds · not synthetic values.
           </p>
 
         </Card>
@@ -575,9 +561,10 @@ export default function DashboardPage() {
 
         <Card>
 
-          <h3 className="text-[15px] font-semibold text-slate-900">
-            7-Day AQI Trend
-          </h3>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-[15px] font-semibold text-slate-900">7-Day AQI Trend</h3>
+            <span className="text-[10px] text-indigo-600">{cityData.forecastSource || "AirSense Hybrid Forecast"}</span>
+          </div>
 
           <div className="mt-4 h-56">
 
@@ -725,6 +712,37 @@ export default function DashboardPage() {
 
         </Card>
 
+      </div>
+
+      {/* ================= MULTI-SOURCE CONTEXT ================= */}
+      <div className="mt-6 grid gap-5 lg:grid-cols-3">
+        <Card>
+          <div className="flex items-center justify-between">
+            <h3 className="text-[15px] font-semibold text-slate-900">Weather Context</h3>
+            <span className="text-[10px] text-slate-400">{cityData.weather?.source || "Open-Meteo"}</span>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+            <div className="rounded-lg bg-slate-50 p-3"><div className="text-slate-400">Temperature</div><strong className="text-lg text-slate-800">{cityData.weather?.current?.temperature ?? "—"}°C</strong></div>
+            <div className="rounded-lg bg-slate-50 p-3"><div className="text-slate-400">Humidity</div><strong className="text-lg text-slate-800">{cityData.weather?.current?.humidity ?? "—"}%</strong></div>
+            <div className="rounded-lg bg-slate-50 p-3"><div className="text-slate-400">Wind</div><strong className="text-lg text-slate-800">{cityData.weather?.current?.windSpeed ?? "—"} km/h</strong></div>
+            <div className="rounded-lg bg-slate-50 p-3"><div className="text-slate-400">Pressure</div><strong className="text-lg text-slate-800">{cityData.weather?.current?.pressure ?? "—"} hPa</strong></div>
+          </div>
+        </Card>
+
+        <Card className="lg:col-span-2 overflow-hidden">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-[15px] font-semibold text-slate-900">Satellite Aerosol Context</h3>
+              <p className="text-xs text-slate-500">NASA MODIS Terra aerosol optical depth · GIBS</p>
+            </div>
+            <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-600">Satellite layer</span>
+          </div>
+          {cityData.satelliteImageUrl ? (
+            <img src={cityData.satelliteImageUrl} alt={`${city} NASA aerosol satellite layer`} className="mt-3 h-48 w-full rounded-xl object-cover" loading="lazy" />
+          ) : (
+            <div className="mt-3 flex h-48 items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-400">Satellite layer unavailable right now.</div>
+          )}
+        </Card>
       </div>
 
       {/* ================= CITY COMPARISON ================= */}
