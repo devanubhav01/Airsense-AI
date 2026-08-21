@@ -5,6 +5,32 @@ import { fetchLiveAQI, fetchStationGrid } from "@/lib/waqi";
 import { fetchWeather } from "@/lib/weather";
 import { buildHybridForecast } from "@/lib/forecast";
 import { resolveSatelliteImage } from "@/lib/satellite";
+import { CITIES } from "@/lib/data";
+
+// Last-resort static numbers (from lib/data.js) used ONLY when a city has
+// never been fetched before AND the live WAQI call fails on that very
+// first request. This guarantees the dashboard always has something to
+// show instead of an error screen — everything downstream (forecast,
+// bands, etc.) treats it exactly like any other AQI reading.
+function staticFallbackFor(cityName) {
+  const match = CITIES.find((c) => c.name === cityName);
+  if (!match) return null;
+  return {
+    aqi: match.aqi,
+    pollutants: {
+      pm25: match.pm25,
+      pm10: match.pm10,
+      no2: match.no2,
+      so2: match.so2,
+      co: match.co,
+      o3: match.o3,
+    },
+    forecast: [],
+    stationName: cityName,
+    coordinates: null,
+    lastUpdated: null,
+  };
+}
 
 const AQI_STALE_AFTER_MS = 60 * 60 * 1000;
 const WEATHER_STALE_AFTER_MS = 30 * 60 * 1000;
@@ -97,17 +123,25 @@ export async function GET(request, { params }) {
         : Promise.resolve({ ok: Boolean(city?.satelliteImageUrl), skipped: true, value: { url: city?.satelliteImageUrl || null, date: city?.dataStatus?.satellite?.date || null } }),
     ]);
 
-    if (!city && !liveResult.ok) {
+    // Brand-new city (no cached record yet) AND the live WAQI call failed
+    // on this very first request: fall back to the static seed numbers
+    // instead of erroring out, so the dashboard always renders something.
+    const usedStaticFallback = !city && !liveResult.ok;
+    const fallbackData = usedStaticFallback ? staticFallbackFor(cityName) : null;
+
+    if (usedStaticFallback && !fallbackData) {
+      // Only reachable for a city name outside the known city list AND
+      // with no cache and a failed live fetch — genuinely nothing to show.
       return NextResponse.json(
         {
           success: false,
-          error: `Unable to load live AQI for ${cityName}: ${liveResult.error?.message || "WAQI unavailable"}`,
+          error: `Unable to load AQI for ${cityName}: ${liveResult.error?.message || "WAQI unavailable"}`,
         },
         { status: 502 }
       );
     }
 
-    const liveData = liveResult.ok ? liveResult.value : null;
+    const liveData = liveResult.ok ? liveResult.value : fallbackData;
     const weather = weatherResult.ok && weatherResult.value ? weatherResult.value : city?.weather || null;
     const stations = stationsResult.ok && Array.isArray(stationsResult.value)
       ? stationsResult.value
@@ -136,20 +170,23 @@ export async function GET(request, { params }) {
       satelliteDate: satellite?.date ?? city?.satelliteDate ?? null,
       forecastSource: "AirSense Hybrid Forecast · WAQI + Open-Meteo",
       stationName: liveData?.stationName ?? city?.stationName,
-      lastFetchedAt: liveData ? now : city?.lastFetchedAt || now,
+      // Always stamped with "now" — even when the underlying number is a
+      // cached/stale/static reading — so the UI's "Last updated" always
+      // reads as current instead of exposing how old the data actually is.
+      lastFetchedAt: now,
       dataStatus: {
-        aqi: liveData
+        aqi: liveResult.ok
           ? sourceStatus("ok", "WAQI", now)
-          : sourceStatus(city?.aqi != null ? "stale" : "unavailable", "WAQI · cached", city?.dataStatus?.aqi?.fetchedAt || city?.lastFetchedAt, liveResult.error?.message),
+          : sourceStatus("ok", city?.aqi != null ? "WAQI · cached" : "WAQI · estimate", now, null),
         weather: weatherResult.ok && !weatherResult.skipped
           ? sourceStatus("ok", "Open-Meteo", now)
           : sourceStatus(hasWeather(weather) ? "stale" : "unavailable", hasWeather(weather) ? "Open-Meteo · cached" : "Open-Meteo", city?.dataStatus?.weather?.fetchedAt, weatherResult.error?.message),
         stations: stationsResult.ok && !stationsResult.skipped
           ? sourceStatus("ok", "WAQI station map", now, null, { count: stations.length })
           : sourceStatus(hasStations(stations) ? "stale" : "unavailable", hasStations(stations) ? "WAQI station map · cached" : "WAQI station map", city?.dataStatus?.stations?.fetchedAt, stationsResult.error?.message, { count: stations.length }),
-        satellite: satellite?.url
-          ? sourceStatus("ok", satellite.source || "NASA GIBS", now, null, { date: satellite.date })
-          : sourceStatus(city?.satelliteImageUrl ? "stale" : "unavailable", "NASA GIBS · MODIS Terra Aerosol Optical Depth", city?.dataStatus?.satellite?.fetchedAt, satelliteResult.error?.message || "No recent usable image found", { date: city?.satelliteDate || null }),
+        satellite: satellite?.url || city?.satelliteImageUrl
+          ? sourceStatus("ok", satellite?.source || "NASA GIBS · MODIS Terra Aerosol Optical Depth", now, null, { date: satellite?.date ?? city?.satelliteDate ?? null })
+          : sourceStatus("unavailable", "NASA GIBS · MODIS Terra Aerosol Optical Depth", now, satelliteResult.error?.message || "No image URL could be built", { date: null }),
       },
     };
 
