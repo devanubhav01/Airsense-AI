@@ -39,8 +39,18 @@ function hasStations(stations) {
   return Array.isArray(stations) && stations.length > 0;
 }
 
-function hasSatellite(satellite) {
-  return Boolean(satellite?.url || satellite);
+function hasSatellite(satelliteImageUrl) {
+  return typeof satelliteImageUrl === "string" && satelliteImageUrl.length > 0;
+}
+
+// Runs an async factory and always resolves (never rejects/throws) so a
+// bug or failure in ONE data source (e.g. satellite) can never crash the
+// whole Promise.all and take AQI/weather/stations down with it.
+function safeSettle(factory) {
+  return Promise.resolve()
+    .then(() => factory())
+    .then((value) => ({ ok: true, value }))
+    .catch((error) => ({ ok: false, error }));
 }
 
 export async function GET(request, { params }) {
@@ -74,16 +84,16 @@ export async function GET(request, { params }) {
 
     const [liveResult, weatherResult, stationsResult, satelliteResult] = await Promise.all([
       needsAqi
-        ? fetchLiveAQI(cityName).then((value) => ({ ok: true, value })).catch((error) => ({ ok: false, error }))
+        ? safeSettle(() => fetchLiveAQI(cityName))
         : Promise.resolve({ ok: true, skipped: true, value: null }),
       needsWeather
-        ? fetchWeather(cityName).then((value) => ({ ok: true, value })).catch((error) => ({ ok: false, error }))
+        ? safeSettle(() => fetchWeather(cityName))
         : Promise.resolve({ ok: true, skipped: true, value: city?.weather || null }),
       needsStations
-        ? fetchStationGrid(cityName).then((value) => ({ ok: true, value })).catch((error) => ({ ok: false, error }))
+        ? safeSettle(() => fetchStationGrid(cityName))
         : Promise.resolve({ ok: true, skipped: true, value: city?.stations || [] }),
       needsSatellite
-        ? resolveSatelliteImage(cityName).then((value) => ({ ok: Boolean(value?.url), value })).catch((error) => ({ ok: false, error }))
+        ? safeSettle(() => resolveSatelliteImage(cityName)).then((r) => ({ ...r, ok: r.ok && Boolean(r.value?.url) }))
         : Promise.resolve({ ok: Boolean(city?.satelliteImageUrl), skipped: true, value: { url: city?.satelliteImageUrl || null, date: city?.dataStatus?.satellite?.date || null } }),
     ]);
 
