@@ -197,7 +197,7 @@ export default function SatelliteCityGrid() {
       </div>
 
       <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2.5 text-[10px] leading-relaxed text-slate-500">
-        Local visual fallbacks are bundled, so the dashboard never
+        Historical visual fallbacks are bundled locally, so the dashboard never
         shows an empty satellite panel. When the NASA/GIBS image request
         succeeds, the corresponding city tile automatically switches to it.
       </div>
