@@ -273,19 +273,33 @@ export default function DashboardPage() {
     session?.user?.name ||
     "there";
 
+  // Always build a populated 6×4 grid from station/fallback data.
+  // WAQI can be unavailable, so the local snapshot is deliberately used as
+  // the minimum source of truth instead of rendering an empty heatmap.
   const heatmapCells = Array.from({ length: 24 }, (_, index) => {
-    const source = stations[index % Math.max(stations.length, 1)];
+    const source = stations[index % Math.max(stations.length, 1)] || {};
     const offsets = [-18, 8, 22, -7, 15, 31, -11, 5, 18, -4, 27, 12];
-    const baseValue = Number(source?.aqi) || Number(cityData.aqi) || 0;
-    const value = Math.max(
-      0,
-      Math.min(500, Math.round(baseValue + offsets[index % offsets.length]))
-    );
+    const aqiBase = Number(source.aqi) || Number(cityData.aqi) || 0;
+
+    let rawValue = aqiBase + offsets[index % offsets.length];
+
+    if (view === "PM2.5") {
+      const pm25Base = Number(cityData.pollutants?.pm25) || Math.max(1, aqiBase * 0.48);
+      rawValue = pm25Base + offsets[index % offsets.length] * 0.45;
+    } else if (view === "PM10") {
+      const pm10Base = Number(cityData.pollutants?.pm10) || Math.max(1, aqiBase * 0.72);
+      rawValue = pm10Base + offsets[index % offsets.length] * 0.6;
+    }
+
+    const value = Math.max(0, Math.round(rawValue));
+    const bandValue = view === "AQI"
+      ? Math.min(500, value)
+      : Math.min(500, Math.round(value * (view === "PM2.5" ? 2.1 : 1.45)));
 
     return {
       index,
       value,
-      band: getBand(value),
+      band: getBand(bandValue),
     };
   });
 
@@ -564,7 +578,7 @@ export default function DashboardPage() {
           </div>
 
           <p className="mt-3 text-xs text-slate-500">
-            Zone-level AQI intensity is rendered immediately from the bundled snapshot; live WAQI station observations replace the fallback grid when available.
+            {view}-intensity is always rendered from the bundled station snapshot first; live WAQI observations replace it automatically when available.
           </p>
 
         </Card>
