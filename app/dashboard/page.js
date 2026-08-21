@@ -136,9 +136,6 @@ export default function DashboardPage() {
   const [compareCity, setCompareCity] =
     useState("Mumbai");
 
-  const [view, setView] =
-    useState("AQI");
-
   /*
    * If logged-in user has a saved city,
    * automatically use that city.
@@ -273,35 +270,6 @@ export default function DashboardPage() {
     session?.user?.name ||
     "there";
 
-  // Always build a populated 6×4 grid from station/fallback data.
-  // WAQI can be unavailable, so the local snapshot is deliberately used as
-  // the minimum source of truth instead of rendering an empty heatmap.
-  const heatmapCells = Array.from({ length: 24 }, (_, index) => {
-    const source = stations[index % Math.max(stations.length, 1)] || {};
-    const offsets = [-18, 8, 22, -7, 15, 31, -11, 5, 18, -4, 27, 12];
-    const aqiBase = Number(source.aqi) || Number(cityData.aqi) || 0;
-
-    let rawValue = aqiBase + offsets[index % offsets.length];
-
-    if (view === "PM2.5") {
-      const pm25Base = Number(cityData.pollutants?.pm25) || Math.max(1, aqiBase * 0.48);
-      rawValue = pm25Base + offsets[index % offsets.length] * 0.45;
-    } else if (view === "PM10") {
-      const pm10Base = Number(cityData.pollutants?.pm10) || Math.max(1, aqiBase * 0.72);
-      rawValue = pm10Base + offsets[index % offsets.length] * 0.6;
-    }
-
-    const value = Math.max(0, Math.round(rawValue));
-    const bandValue = view === "AQI"
-      ? Math.min(500, value)
-      : Math.min(500, Math.round(value * (view === "PM2.5" ? 2.1 : 1.45)));
-
-    return {
-      index,
-      value,
-      band: getBand(bandValue),
-    };
-  });
 
   return (
 
@@ -509,79 +477,15 @@ export default function DashboardPage() {
 
       </div>
 
-      {/* ================= HEATMAP + GAUGE ================= */}
+      {/* ================= SATELLITE AEROSOL CONTEXT + GAUGE ================= */}
 
       <div className="mt-6 grid gap-5 lg:grid-cols-3">
 
-        {/* POLLUTION HEATMAP */}
+        {/* SATELLITE AEROSOL CONTEXT (replaces the old placeholder heatmap grid) */}
 
-        <Card className="lg:col-span-2">
-
-          <div className="flex items-center justify-between">
-
-            <h3 className="text-[15px] font-semibold text-slate-900">
-              Pollution Heatmap
-            </h3>
-
-            <div className="flex gap-1 rounded-lg border border-slate-200 p-0.5">
-
-              {[
-                "PM2.5",
-                "PM10",
-                "AQI"
-              ].map((v) => (
-
-                <button
-                  key={v}
-                  onClick={() =>
-                    setView(v)
-                  }
-                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                    view === v
-                      ? "bg-indigo-600 text-white"
-                      : "text-slate-500"
-                  }`}
-                >
-                  {v}
-                </button>
-
-              ))}
-
-            </div>
-
-          </div>
-
-          <div className="relative mt-4 h-56 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 p-1.5">
-            <div className="grid h-full grid-cols-6 grid-rows-4 gap-1.5">
-              {heatmapCells.map((cell) => (
-                <div
-                  key={cell.index}
-                  title={`Zone ${cell.index + 1} · AQI ${cell.value} · ${cell.band.label}`}
-                  className="relative overflow-hidden rounded-lg border border-white/60 shadow-sm transition-transform duration-200 hover:scale-[1.025]"
-                  style={{
-                    background: cell.band.hex,
-                    opacity: 0.86 + (cell.index % 3) * 0.04,
-                  }}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-black/10" />
-                </div>
-              ))}
-            </div>
-
-            <div className="absolute left-3 top-3 rounded-md bg-white/90 px-2 py-1 text-[10px] text-slate-500 shadow backdrop-blur">
-              {stationsLoading ? "Refreshing live station grid…" : "Station observation grid"}
-            </div>
-
-            <div className="absolute bottom-3 left-3 rounded-md bg-white/90 px-2 py-1 text-[10px] text-slate-500 shadow backdrop-blur">
-              {city} · {stationsLoading ? "fallback → live" : "live / cached"}
-            </div>
-          </div>
-
-          <p className="mt-3 text-xs text-slate-500">
-            {view}-intensity is always rendered from the bundled station snapshot first; live WAQI observations replace it automatically when available.
-          </p>
-
-        </Card>
+        <div className="lg:col-span-2">
+          <SatelliteCityGrid activeCity={city} />
+        </div>
 
         {/* INSTRUMENT READOUT */}
 
@@ -784,8 +688,6 @@ export default function DashboardPage() {
             <div className="rounded-lg bg-slate-50 p-3"><div className="text-slate-400">Pressure</div><strong className="text-lg text-slate-800">{cityData.weather?.current?.pressure ?? "—"} hPa</strong></div>
           </div>
         </Card>
-
-        <SatelliteCityGrid />
       </div>
 
       {/* ================= CITY COMPARISON ================= */}
