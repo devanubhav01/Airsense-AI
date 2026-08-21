@@ -29,6 +29,7 @@ import Card from "@/components/Card";
 import Button from "@/components/Button";
 import Gauge from "@/components/Gauge";
 import SatelliteCityGrid from "@/components/SatelliteCityGrid";
+import PollutionHeatmap from "@/components/PollutionHeatmap";
 
 import {
   POLLUTANT_LABELS,
@@ -477,11 +478,18 @@ export default function DashboardPage() {
 
       </div>
 
+      {/* ================= POLLUTION HEATMAP ================= */}
+      {/* Fully static — no live WAQI/station connection, see component. */}
+
+      <div className="mt-6">
+        <PollutionHeatmap activeCity={city} />
+      </div>
+
       {/* ================= SATELLITE AEROSOL CONTEXT + GAUGE ================= */}
 
       <div className="mt-6 grid gap-5 lg:grid-cols-3">
 
-        {/* SATELLITE AEROSOL CONTEXT (replaces the old placeholder heatmap grid) */}
+        {/* SATELLITE AEROSOL CONTEXT */}
 
         <div className="lg:col-span-2">
           <SatelliteCityGrid activeCity={city} />
