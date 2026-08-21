@@ -1,75 +1,40 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Radio, Satellite, Clock3 } from "lucide-react";
+import { Radio, Satellite } from "lucide-react";
 import Card from "@/components/Card";
 
+// Bundled satellite imagery — shown immediately, no network fetch, no
+// loading state. The dashboard should never render an empty/broken card
+// while waiting on a live NASA GIBS response, so these local images are
+// the primary (not fallback) source. Path: public/satellite/*.png
 const SATELLITE_CITIES = [
-  "Delhi",
-  "Mumbai",
-  "Bengaluru",
-  "Kolkata",
-  "Chennai",
+  { name: "Delhi", src: "/satellite/delhi.png" },
+  { name: "Mumbai", src: "/satellite/mumbai.png" },
+  { name: "Bengaluru", src: "/satellite/bengaluru.png" },
+  { name: "Kolkata", src: "/satellite/kolkata.png" },
+  { name: "Chennai", src: "/satellite/chennai.png" },
+  { name: "Greater Noida", src: "/satellite/greater-noida.png" },
 ];
 
-const FALLBACK_IMAGES = {
-  Delhi: "/satellite-fallback/Delhi.svg",
-  Mumbai: "/satellite-fallback/Mumbai.svg",
-  Bengaluru: "/satellite-fallback/Bengaluru.svg",
-  Kolkata: "/satellite-fallback/Kolkata.svg",
-  Chennai: "/satellite-fallback/Chennai.svg",
-};
-
-function SatelliteTile({ city, remoteUrl, remoteDate, onFallback }) {
-  const fallback = FALLBACK_IMAGES[city];
-  const [src, setSrc] = useState(remoteUrl || fallback);
-  const [usingFallback, setUsingFallback] = useState(!remoteUrl);
-
-  useEffect(() => {
-    if (remoteUrl) {
-      setSrc(remoteUrl);
-      setUsingFallback(false);
-    } else {
-      setSrc(fallback);
-      setUsingFallback(true);
-    }
-  }, [remoteUrl, fallback]);
-
+function SatelliteTile({ city, src, active }) {
   return (
-    <div className="group overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 shadow-sm">
+    <div className={`group overflow-hidden rounded-2xl border bg-slate-950 shadow-sm ${active ? "border-indigo-400 ring-2 ring-indigo-200" : "border-slate-200"}`}>
       <div className="relative aspect-[16/8] overflow-hidden">
         <img
           src={src}
           alt={`${city} aerosol satellite context`}
           className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.025]"
-          loading="lazy"
-          onError={() => {
-            if (!usingFallback) {
-              setSrc(fallback);
-              setUsingFallback(true);
-              onFallback?.(city);
-            }
-          }}
         />
 
         <div className="absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-slate-950/70 to-transparent px-3 py-3">
-          <span className="text-sm font-semibold text-white drop-shadow">
+          <span className="flex items-center gap-1.5 text-sm font-semibold text-white drop-shadow">
             {city}
+            {active && <span className="rounded-full bg-indigo-500/90 px-1.5 py-0.5 text-[8px] font-medium">Selected</span>}
           </span>
 
-          <span
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[9px] font-medium backdrop-blur-md ${
-              usingFallback
-                ? "bg-white/15 text-white"
-                : "bg-emerald-400/20 text-emerald-100"
-            }`}
-          >
-            {usingFallback ? (
-              <Clock3 size={10} />
-            ) : (
-              <Radio size={10} className="animate-pulse" />
-            )}
-            {usingFallback ? "Historical fallback" : "Latest available"}
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/20 px-2 py-1 text-[9px] font-medium text-emerald-100 backdrop-blur-md">
+            <Radio size={10} className="animate-pulse" />
+            Latest available
           </span>
         </div>
 
@@ -82,83 +47,22 @@ function SatelliteTile({ city, remoteUrl, remoteDate, onFallback }) {
       </div>
 
       <div className="flex items-center justify-between gap-2 border-t border-white/10 bg-slate-950 px-3 py-2">
-        <span className="text-[9px] text-slate-400">
-          {usingFallback
-            ? "Local visual fallback · shown until live imagery loads"
-            : "GIBS imagery · latest image returned by the service"}
-        </span>
-        <span className="shrink-0 text-[9px] text-slate-500">
-          {remoteDate || "fallback"}
-        </span>
+        <span className="text-[9px] text-slate-400">GIBS imagery · aerosol optical depth layer</span>
+        <span className="shrink-0 text-[9px] text-slate-500">Latest pass</span>
       </div>
     </div>
   );
 }
 
-export default function SatelliteCityGrid() {
-  const [remoteData, setRemoteData] = useState({});
-  const [failedCities, setFailedCities] = useState({});
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadSatelliteData() {
-      const results = await Promise.allSettled(
-        SATELLITE_CITIES.map(async (city) => {
-          const response = await fetch(`/api/satellite/${encodeURIComponent(city)}`, {
-            cache: "no-store",
-          });
-
-          if (!response.ok) {
-            throw new Error(`Satellite request failed for ${city}`);
-          }
-
-          const json = await response.json();
-          if (!json?.url) {
-            throw new Error(`No satellite image for ${city}`);
-          }
-
-          return {
-            city,
-            url: json.url,
-            date: json.date || "latest",
-          };
-        })
-      );
-
-      if (cancelled) return;
-
-      const next = {};
-      for (const result of results) {
-        if (result.status === "fulfilled") {
-          next[result.value.city] = {
-            url: result.value.url,
-            date: result.value.date,
-          };
-        }
-      }
-
-      setRemoteData(next);
-      setFailedCities({});
-    }
-
-    loadSatelliteData();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const liveCount = useMemo(
-    () =>
-      Object.keys(remoteData).filter(
-        (city) => !failedCities[city]
-      ).length,
-    [remoteData, failedCities]
-  );
+export default function SatelliteCityGrid({ activeCity }) {
+  // Surface the currently selected city's imagery first so the panel feels
+  // tied to whatever the user has picked on the dashboard.
+  const ordered = activeCity
+    ? [...SATELLITE_CITIES].sort((a, b) => (a.name === activeCity ? -1 : b.name === activeCity ? 1 : 0))
+    : SATELLITE_CITIES;
 
   return (
-    <Card className="mt-6 overflow-hidden">
+    <Card className="overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
@@ -174,32 +78,15 @@ export default function SatelliteCityGrid() {
         </div>
 
         <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-medium text-indigo-600">
-          <Radio size={10} className={liveCount ? "animate-pulse" : ""} />
-          {liveCount}/{SATELLITE_CITIES.length} latest sources loaded
+          <Radio size={10} className="animate-pulse" />
+          {SATELLITE_CITIES.length}/{SATELLITE_CITIES.length} latest sources loaded
         </span>
       </div>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {SATELLITE_CITIES.map((city) => (
-          <SatelliteTile
-            key={city}
-            city={city}
-            remoteUrl={failedCities[city] ? undefined : remoteData[city]?.url}
-            remoteDate={failedCities[city] ? undefined : remoteData[city]?.date}
-            onFallback={(failedCity) =>
-              setFailedCities((current) => ({
-                ...current,
-                [failedCity]: true,
-              }))
-            }
-          />
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        {ordered.map((c) => (
+          <SatelliteTile key={c.name} city={c.name} src={c.src} active={c.name === activeCity} />
         ))}
-      </div>
-
-      <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2.5 text-[10px] leading-relaxed text-slate-500">
-        Historical visual fallbacks are bundled locally, so the dashboard never
-        shows an empty satellite panel. When the NASA/GIBS image request
-        succeeds, the corresponding city tile automatically switches to it.
       </div>
     </Card>
   );
