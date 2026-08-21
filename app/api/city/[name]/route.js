@@ -1,41 +1,17 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import City from "@/models/City";
-import { fetchLiveAQI, fetchStationGrid } from "@/lib/waqi";
 import { fetchWeather } from "@/lib/weather";
 import { buildHybridForecast } from "@/lib/forecast";
-import { resolveSatelliteImage } from "@/lib/satellite";
-import { CITIES } from "@/lib/data";
+import { resolveSatelliteImage, getSatelliteImageUrl } from "@/lib/satellite";
+import { getFallbackSnapshot } from "@/lib/fallback-data";
 
-// Last-resort static numbers (from lib/data.js) used ONLY when a city has
-// never been fetched before AND the live WAQI call fails on that very
-// first request. This guarantees the dashboard always has something to
-// show instead of an error screen — everything downstream (forecast,
-// bands, etc.) treats it exactly like any other AQI reading.
-function staticFallbackFor(cityName) {
-  const match = CITIES.find((c) => c.name === cityName);
-  if (!match) return null;
-  return {
-    aqi: match.aqi,
-    pollutants: {
-      pm25: match.pm25,
-      pm10: match.pm10,
-      no2: match.no2,
-      so2: match.so2,
-      co: match.co,
-      o3: match.o3,
-    },
-    forecast: [],
-    stationName: cityName,
-    coordinates: null,
-    lastUpdated: null,
-  };
-}
-
-const AQI_STALE_AFTER_MS = 60 * 60 * 1000;
+// IMPORTANT:
+// AQI and station data are intentionally cache-only.
+// The dashboard should remain populated with the previous snapshot instead
+// of replacing it with a live WAQI value.
 const WEATHER_STALE_AFTER_MS = 30 * 60 * 1000;
-const STATIONS_STALE_AFTER_MS = 15 * 60 * 1000;
-const SATELLITE_STALE_AFTER_MS = 6 * 60 * 60 * 1000;
+const SATELLITE_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 function ageMs(value) {
   if (!value) return Infinity;
@@ -65,128 +41,170 @@ function hasStations(stations) {
   return Array.isArray(stations) && stations.length > 0;
 }
 
-function hasSatellite(satelliteImageUrl) {
-  return typeof satelliteImageUrl === "string" && satelliteImageUrl.length > 0;
+function hasSatellite(url) {
+  return typeof url === "string" && url.length > 0;
 }
 
-// Runs an async factory and always resolves (never rejects/throws) so a
-// bug or failure in ONE data source (e.g. satellite) can never crash the
-// whole Promise.all and take AQI/weather/stations down with it.
-function safeSettle(factory) {
-  return Promise.resolve()
-    .then(() => factory())
-    .then((value) => ({ ok: true, value }))
-    .catch((error) => ({ ok: false, error }));
+async function fetchWeatherSafely(cityName) {
+  try {
+    return await fetchWeather(cityName);
+  } catch (error) {
+    return { __error: error };
+  }
+}
+
+async function fetchSatelliteSafely(cityName) {
+  try {
+    return await resolveSatelliteImage(cityName);
+  } catch (error) {
+    return { __error: error };
+  }
 }
 
 export async function GET(request, { params }) {
   try {
     await dbConnect();
+
     const { name } = await params;
     const cityName = decodeURIComponent(name);
 
+    const fallback = getFallbackSnapshot(cityName);
     let city = await City.findOne({ name: cityName });
     const now = new Date();
 
-    const needsAqi =
-      !city ||
-      !Number.isFinite(Number(city.aqi)) ||
-      ageMs(city.dataStatus?.aqi?.fetchedAt || city.lastFetchedAt) > AQI_STALE_AFTER_MS;
+    /*
+     * 1) AQI: CACHE ONLY
+     *
+     * Never call WAQI from this route. If MongoDB has a previous AQI,
+     * preserve it. If MongoDB is empty, use the bundled older snapshot.
+     */
+    const cachedAQI = Number.isFinite(Number(city?.aqi))
+      ? Number(city.aqi)
+      : fallback.aqi;
 
-    const needsWeather =
-      !city ||
-      !hasWeather(city.weather) ||
-      ageMs(city.dataStatus?.weather?.fetchedAt) > WEATHER_STALE_AFTER_MS;
+    const cachedPollutants = city?.pollutants || fallback.pollutants;
 
-    const needsStations =
-      !city ||
-      !hasStations(city.stations) ||
-      ageMs(city.dataStatus?.stations?.fetchedAt) > STATIONS_STALE_AFTER_MS;
+    /*
+     * 2) Stations: CACHE ONLY
+     *
+     * Preserve MongoDB station grid. If there is no grid yet, use the
+     * bundled older station snapshot so the heatmap is never empty.
+     */
+    const stations = hasStations(city?.stations)
+      ? city.stations
+      : fallback.stations;
 
-    const needsSatellite =
-      !city ||
-      !hasSatellite(city.satelliteImageUrl) ||
-      ageMs(city.dataStatus?.satellite?.fetchedAt) > SATELLITE_STALE_AFTER_MS;
+    const stationFetchedAt =
+      city?.dataStatus?.stations?.fetchedAt ||
+      city?.dataStatus?.aqi?.fetchedAt ||
+      fallback.snapshotAt;
 
-    const [liveResult, weatherResult, stationsResult, satelliteResult] = await Promise.all([
-      needsAqi
-        ? safeSettle(() => fetchLiveAQI(cityName))
-        : Promise.resolve({ ok: true, skipped: true, value: null }),
-      needsWeather
-        ? safeSettle(() => fetchWeather(cityName))
-        : Promise.resolve({ ok: true, skipped: true, value: city?.weather || null }),
-      needsStations
-        ? safeSettle(() => fetchStationGrid(cityName))
-        : Promise.resolve({ ok: true, skipped: true, value: city?.stations || [] }),
-      needsSatellite
-        ? safeSettle(() => resolveSatelliteImage(cityName)).then((r) => ({ ...r, ok: r.ok && Boolean(r.value?.url) }))
-        : Promise.resolve({ ok: Boolean(city?.satelliteImageUrl), skipped: true, value: { url: city?.satelliteImageUrl || null, date: city?.dataStatus?.satellite?.date || null } }),
-    ]);
+    /*
+     * 3) Weather: still try Open-Meteo, but fall back to the cached snapshot.
+     */
+    const weatherResult = await fetchWeatherSafely(cityName);
+    const weather =
+      !weatherResult.__error && hasWeather(weatherResult)
+        ? weatherResult
+        : city?.weather || fallback.weather;
 
-    // Brand-new city (no cached record yet) AND the live WAQI call failed
-    // on this very first request: fall back to the static seed numbers
-    // instead of erroring out, so the dashboard always renders something.
-    const usedStaticFallback = !city && !liveResult.ok;
-    const fallbackData = usedStaticFallback ? staticFallbackFor(cityName) : null;
+    /*
+     * 4) Satellite: prefer the stored image, but when it is old/missing,
+     * resolve an older NASA GIBS image. The resolver itself has a final
+     * historical URL fallback, so this never intentionally returns blank.
+     */
+    const satelliteIsOld =
+      !city?.satelliteImageUrl ||
+      ageMs(city?.dataStatus?.satellite?.fetchedAt) > SATELLITE_STALE_AFTER_MS;
 
-    if (usedStaticFallback && !fallbackData) {
-      // Only reachable for a city name outside the known city list AND
-      // with no cache and a failed live fetch — genuinely nothing to show.
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Unable to load AQI for ${cityName}: ${liveResult.error?.message || "WAQI unavailable"}`,
-        },
-        { status: 502 }
-      );
-    }
+    const satelliteResult = satelliteIsOld
+      ? await fetchSatelliteSafely(cityName)
+      : {
+          url: city.satelliteImageUrl,
+          date: city.satelliteDate,
+          source: city.dataStatus?.satellite?.source || "NASA GIBS · cached",
+          status: "cached",
+        };
 
-    const liveData = liveResult.ok ? liveResult.value : fallbackData;
-    const weather = weatherResult.ok && weatherResult.value ? weatherResult.value : city?.weather || null;
-    const stations = stationsResult.ok && Array.isArray(stationsResult.value)
-      ? stationsResult.value
-      : city?.stations || [];
-    const satellite = satelliteResult.value || null;
+    const satellite =
+      !satelliteResult.__error && satelliteResult?.url
+        ? satelliteResult
+        : {
+            url: city?.satelliteImageUrl || null,
+            date: city?.satelliteDate || null,
+            source: "NASA GIBS · cached",
+            status: "cached",
+          };
 
-    const currentAQI = liveData?.aqi ?? city?.aqi;
-    const pollutants = liveData?.pollutants ?? city?.pollutants;
-    const waqiForecast = liveData?.forecast ?? [];
-    const forecast = currentAQI != null
-      ? buildHybridForecast({
-          currentAQI,
-          waqiForecast: waqiForecast.length ? waqiForecast : city?.forecast7Day || [],
-          weather,
-        })
-      : city?.forecast7Day || [];
+    const forecast = buildHybridForecast({
+      currentAQI: cachedAQI,
+      waqiForecast: city?.forecast7Day || fallback.forecast7Day,
+      weather,
+    });
+
+    const aqiFetchedAt =
+      city?.dataStatus?.aqi?.fetchedAt ||
+      city?.lastFetchedAt ||
+      fallback.snapshotAt;
+
+    const satelliteFetchedAt =
+      satelliteResult?.__error
+        ? city?.dataStatus?.satellite?.fetchedAt || fallback.snapshotAt
+        : now;
 
     const updated = {
       name: cityName,
-      aqi: currentAQI,
-      pollutants,
+      aqi: cachedAQI,
+      pollutants: cachedPollutants,
       forecast7Day: forecast,
       weather,
       stations,
-      satelliteImageUrl: satellite?.url ?? city?.satelliteImageUrl ?? null,
-      satelliteDate: satellite?.date ?? city?.satelliteDate ?? null,
-      forecastSource: "AirSense Hybrid Forecast · WAQI + Open-Meteo",
-      stationName: liveData?.stationName ?? city?.stationName,
-      // Always stamped with "now" — even when the underlying number is a
-      // cached/stale/static reading — so the UI's "Last updated" always
-      // reads as current instead of exposing how old the data actually is.
-      lastFetchedAt: now,
+      satelliteImageUrl: satellite.url,
+      satelliteDate: satellite.date,
+      forecastSource: "AirSense Hybrid Forecast · cached AQI + Open-Meteo",
+      stationName: city?.stationName || fallback.stationName,
+
+      // Do not bump this timestamp just because the API endpoint was opened.
+      lastFetchedAt: aqiFetchedAt,
+
       dataStatus: {
-        aqi: liveResult.ok
-          ? sourceStatus("ok", "WAQI", now)
-          : sourceStatus("ok", city?.aqi != null ? "WAQI · cached" : "WAQI · estimate", now, null),
-        weather: weatherResult.ok && !weatherResult.skipped
+        aqi: sourceStatus(
+          "stale",
+          "AirSense cached AQI snapshot",
+          aqiFetchedAt,
+          null,
+          { mode: "cache-only" }
+        ),
+
+        weather: !weatherResult.__error
           ? sourceStatus("ok", "Open-Meteo", now)
-          : sourceStatus(hasWeather(weather) ? "stale" : "unavailable", hasWeather(weather) ? "Open-Meteo · cached" : "Open-Meteo", city?.dataStatus?.weather?.fetchedAt, weatherResult.error?.message),
-        stations: stationsResult.ok && !stationsResult.skipped
-          ? sourceStatus("ok", "WAQI station map", now, null, { count: stations.length })
-          : sourceStatus(hasStations(stations) ? "stale" : "unavailable", hasStations(stations) ? "WAQI station map · cached" : "WAQI station map", city?.dataStatus?.stations?.fetchedAt, stationsResult.error?.message, { count: stations.length }),
-        satellite: satellite?.url || city?.satelliteImageUrl
-          ? sourceStatus("ok", satellite?.source || "NASA GIBS · MODIS Terra Aerosol Optical Depth", now, null, { date: satellite?.date ?? city?.satelliteDate ?? null })
-          : sourceStatus("unavailable", "NASA GIBS · MODIS Terra Aerosol Optical Depth", now, satelliteResult.error?.message || "No image URL could be built", { date: null }),
+          : sourceStatus(
+              "stale",
+              "Open-Meteo · cached",
+              city?.dataStatus?.weather?.fetchedAt || fallback.snapshotAt,
+              weatherResult.__error?.message
+            ),
+
+        stations: sourceStatus(
+          "stale",
+          hasStations(city?.stations)
+            ? "WAQI station grid · cached"
+            : "AirSense station snapshot · fallback",
+          stationFetchedAt,
+          null,
+          { count: stations.length, mode: "cache-only" }
+        ),
+
+        satellite: sourceStatus(
+          satellite.status === "fallback" ? "stale" : "stale",
+          satellite.source || "NASA GIBS · cached",
+          satelliteFetchedAt,
+          satelliteResult?.__error?.message,
+          {
+            date: satellite.date,
+            mode: "historical-fallback-enabled",
+          }
+        ),
       },
     };
 
@@ -196,16 +214,19 @@ export async function GET(request, { params }) {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    const dataStatus = city.dataStatus?.toObject ? city.dataStatus.toObject() : city.dataStatus;
+    const dataStatus = city.dataStatus?.toObject
+      ? city.dataStatus.toObject()
+      : city.dataStatus;
 
     return NextResponse.json({
       success: true,
       data: city,
       meta: {
         dataSources: [
-          "WAQI ground stations",
+          "AirSense cached AQI snapshot",
+          "AirSense cached station grid",
           "Open-Meteo weather",
-          "NASA GIBS MODIS aerosol imagery",
+          "NASA GIBS MODIS historical/latest-available imagery",
         ],
         forecastMethod: city.forecastSource || "AirSense Hybrid Forecast",
         dataStatus,
@@ -214,9 +235,43 @@ export async function GET(request, { params }) {
     });
   } catch (err) {
     console.error("GET /api/city/[name] error:", err);
-    return NextResponse.json(
-      { success: false, error: "Failed to fetch city intelligence" },
-      { status: 500 }
-    );
+
+    // Last-resort response: even MongoDB errors should not produce a blank
+    // dashboard. The client still receives a complete older snapshot.
+    try {
+      const { name } = await params;
+      const cityName = decodeURIComponent(name);
+      const fallback = getFallbackSnapshot(cityName);
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          ...fallback,
+          satelliteImageUrl: getSatelliteImageUrl(cityName),
+          satelliteDate: "2026-08-18",
+          lastFetchedAt: fallback.snapshotAt,
+          dataStatus: {
+            aqi: sourceStatus("stale", "AirSense cached AQI snapshot", fallback.snapshotAt),
+            stations: sourceStatus("stale", "AirSense station snapshot · fallback", fallback.snapshotAt, null, {
+              count: fallback.stations.length,
+            }),
+            weather: sourceStatus("stale", "AirSense weather snapshot · fallback", fallback.snapshotAt),
+            satellite: sourceStatus("stale", "NASA GIBS historical fallback", fallback.snapshotAt, null, {
+              date: "2026-08-18",
+            }),
+          },
+        },
+        meta: {
+          dataSources: ["AirSense cached fallback snapshot"],
+          dataStatus: "fallback",
+          generatedAt: new Date().toISOString(),
+        },
+      });
+    } catch {
+      return NextResponse.json(
+        { success: false, error: "Failed to load city fallback" },
+        { status: 500 }
+      );
+    }
   }
 }
