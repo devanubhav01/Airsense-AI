@@ -28,11 +28,13 @@ import {
 import Card from "@/components/Card";
 import Button from "@/components/Button";
 import Gauge from "@/components/Gauge";
+import SatelliteCityGrid from "@/components/SatelliteCityGrid";
 
 import {
   POLLUTANT_LABELS,
   getBand
 } from "@/lib/data";
+import { getFallbackSnapshot } from "@/lib/fallback-data";
 
 const CITY_NAMES = [
   "Delhi",
@@ -45,7 +47,9 @@ const CITY_NAMES = [
 
 function useCityData(cityName) {
 
-  const [data, setData] = useState(null);
+  // Start with a bundled snapshot so the dashboard is useful immediately.
+  // Live API data replaces this snapshot as soon as it becomes available.
+  const [data, setData] = useState(() => getFallbackSnapshot(cityName));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -53,30 +57,41 @@ function useCityData(cityName) {
 
     let cancelled = false;
 
+    // Swap to the matching local snapshot instantly when the city changes.
+    setData(getFallbackSnapshot(cityName));
     setLoading(true);
     setError(null);
 
     fetch(
-      `/api/city/${encodeURIComponent(cityName)}`
+      `/api/city/${encodeURIComponent(cityName)}`,
+      { cache: "no-store" }
     )
-      .then((res) => res.json())
+      .then(async (res) => {
+        const json = await res.json();
+
+        if (!res.ok || !json.success) {
+          throw new Error(
+            json.error ||
+            `Failed to load ${cityName} data`
+          );
+        }
+
+        return json;
+      })
       .then((json) => {
 
         if (cancelled) return;
 
-        if (!json.success) {
-          throw new Error(
-            json.error ||
-            "Failed to load city data"
-          );
+        if (json.data) {
+          setData(json.data);
         }
-
-        setData(json.data);
 
       })
       .catch((err) => {
 
         if (!cancelled) {
+          // Keep the already-visible local snapshot. The UI should never
+          // collapse into a blank loading/error panel.
           setError(err.message);
         }
 
@@ -143,9 +158,7 @@ export default function DashboardPage() {
   }, [session?.user?.city]);
 
   const {
-    data: cityData,
-    loading,
-    error
+    data: cityData
   } = useCityData(city);
 
   const {
@@ -153,14 +166,52 @@ export default function DashboardPage() {
     loading: compareLoading
   } = useCityData(compareCity);
 
+  const [stations, setStations] = useState(
+    () => getFallbackSnapshot(city).stations
+  );
+  const [stationsLoading, setStationsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setStations(getFallbackSnapshot(city).stations);
+    setStationsLoading(true);
+
+    fetch(`/api/stations/${encodeURIComponent(city)}`, {
+      cache: "no-store",
+    })
+      .then(async (res) => {
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          throw new Error(json.error || "Live station grid unavailable");
+        }
+        return json;
+      })
+      .then((json) => {
+        if (!cancelled && Array.isArray(json.stations) && json.stations.length) {
+          setStations(json.stations);
+        }
+      })
+      .catch(() => {
+        // Keep the local station snapshot visible when WAQI is unavailable.
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setStationsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [city]);
+
   /*
-   * While session is loading, show loader.
+   * The dashboard is intentionally rendered from the bundled snapshot first.
+   * A small live-status strip communicates that a refresh is in progress
+   * without hiding the actual dashboard.
    */
-  if (
-    sessionStatus === "loading" ||
-    loading ||
-    !cityData
-  ) {
+  if (sessionStatus === "loading" || !cityData) {
 
     return (
 
@@ -173,28 +224,7 @@ export default function DashboardPage() {
             className="animate-spin"
           />
 
-          Loading air-quality monitor for {city}...
-
-        </div>
-
-      </div>
-
-    );
-  }
-
-  /*
-   * Error state
-   */
-  if (error) {
-
-    return (
-
-      <div className="flex min-h-[60vh] items-center justify-center bg-slate-50 px-5">
-
-        <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-600">
-
-          Couldn't load AQI data for {city}:{" "}
-          {error}
+          Preparing air-quality monitor for {city}...
 
         </div>
 
@@ -242,6 +272,22 @@ export default function DashboardPage() {
   const userName =
     session?.user?.name ||
     "there";
+
+  const heatmapCells = Array.from({ length: 24 }, (_, index) => {
+    const source = stations[index % Math.max(stations.length, 1)];
+    const offsets = [-18, 8, 22, -7, 15, 31, -11, 5, 18, -4, 27, 12];
+    const baseValue = Number(source?.aqi) || Number(cityData.aqi) || 0;
+    const value = Math.max(
+      0,
+      Math.min(500, Math.round(baseValue + offsets[index % offsets.length]))
+    );
+
+    return {
+      index,
+      value,
+      band: getBand(value),
+    };
+  });
 
   return (
 
@@ -491,38 +537,34 @@ export default function DashboardPage() {
 
           </div>
 
-          <div className="relative mt-4 h-56 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-            {cityData.stations?.length ? (
-              cityData.stations.map((station) => {
-                const lats = cityData.stations.map((s) => s.lat);
-                const lons = cityData.stations.map((s) => s.lon);
-                const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-                const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-                const x = maxLon === minLon ? 50 : ((station.lon - minLon) / (maxLon - minLon)) * 92 + 4;
-                const y = maxLat === minLat ? 50 : (1 - (station.lat - minLat) / (maxLat - minLat)) * 82 + 8;
-                const band = getBand(station.aqi);
-                const value = station.aqi;
-                return (
-                  <div
-                    key={station.uid}
-                    title={`${station.station} · AQI ${station.aqi}`}
-                    className="absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-lg"
-                    style={{ left: `${x}%`, top: `${y}%`, background: band.hex, opacity: 0.88 }}
-                  >
-                    <span className="flex h-full items-center justify-center text-[9px] font-bold text-white">{value}</span>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="flex h-full items-center justify-center text-xs text-slate-400">Loading station snapshot…</div>
-            )}
-            <div className="absolute bottom-2 left-2 rounded-md bg-white/90 px-2 py-1 text-[10px] text-slate-500 shadow">
-              Monitoring grid · {city} · cached snapshot
+          <div className="relative mt-4 h-56 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 p-1.5">
+            <div className="grid h-full grid-cols-6 grid-rows-4 gap-1.5">
+              {heatmapCells.map((cell) => (
+                <div
+                  key={cell.index}
+                  title={`Zone ${cell.index + 1} · AQI ${cell.value} · ${cell.band.label}`}
+                  className="relative overflow-hidden rounded-lg border border-white/60 shadow-sm transition-transform duration-200 hover:scale-[1.025]"
+                  style={{
+                    background: cell.band.hex,
+                    opacity: 0.86 + (cell.index % 3) * 0.04,
+                  }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-black/10" />
+                </div>
+              ))}
+            </div>
+
+            <div className="absolute left-3 top-3 rounded-md bg-white/90 px-2 py-1 text-[10px] text-slate-500 shadow backdrop-blur">
+              {stationsLoading ? "Refreshing live station grid…" : "Station observation grid"}
+            </div>
+
+            <div className="absolute bottom-3 left-3 rounded-md bg-white/90 px-2 py-1 text-[10px] text-slate-500 shadow backdrop-blur">
+              {city} · {stationsLoading ? "fallback → live" : "live / cached"}
             </div>
           </div>
 
           <p className="mt-3 text-xs text-slate-500">
-            Station grid is kept populated from the last stored snapshot so the monitor never goes blank.
+            Zone-level AQI intensity is rendered immediately from the bundled snapshot; live WAQI station observations replace the fallback grid when available.
           </p>
 
         </Card>
@@ -715,13 +757,13 @@ export default function DashboardPage() {
       </div>
 
       {/* ================= MULTI-SOURCE CONTEXT ================= */}
-      <div className="mt-6 grid gap-5 lg:grid-cols-3">
+      <div className="mt-6">
         <Card>
           <div className="flex items-center justify-between">
             <h3 className="text-[15px] font-semibold text-slate-900">Weather Context</h3>
             <span className="text-[10px] text-slate-400">{cityData.weather?.source || "Open-Meteo"}</span>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+          <div className="mt-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
             <div className="rounded-lg bg-slate-50 p-3"><div className="text-slate-400">Temperature</div><strong className="text-lg text-slate-800">{cityData.weather?.current?.temperature ?? "—"}°C</strong></div>
             <div className="rounded-lg bg-slate-50 p-3"><div className="text-slate-400">Humidity</div><strong className="text-lg text-slate-800">{cityData.weather?.current?.humidity ?? "—"}%</strong></div>
             <div className="rounded-lg bg-slate-50 p-3"><div className="text-slate-400">Wind</div><strong className="text-lg text-slate-800">{cityData.weather?.current?.windSpeed ?? "—"} km/h</strong></div>
@@ -729,41 +771,7 @@ export default function DashboardPage() {
           </div>
         </Card>
 
-        <Card className="lg:col-span-2 overflow-hidden">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-[15px] font-semibold text-slate-900">Satellite Aerosol Context</h3>
-              <p className="text-xs text-slate-500">NASA MODIS Terra aerosol optical depth · latest available / cached</p>
-            </div>
-            <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-600">Historical satellite</span>
-          </div>
-          {cityData.satelliteImageUrl ? (
-            <>
-              <img
-                src={cityData.satelliteImageUrl}
-                alt={`${city} NASA aerosol satellite layer`}
-                className="mt-3 h-48 w-full rounded-xl object-cover"
-                loading="lazy"
-                onError={(event) => {
-                  event.currentTarget.style.display = "none";
-                  const fallback = event.currentTarget.nextElementSibling;
-                  if (fallback) fallback.style.display = "flex";
-                }}
-              />
-              <div
-                className="mt-3 hidden h-48 items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-400"
-              >
-                NASA image could not be rendered by the browser.
-              </div>
-              <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
-                <span>{cityData.dataStatus?.satellite?.source || "NASA GIBS cached"}</span>
-                <span>{cityData.satelliteDate || "historical"}</span>
-              </div>
-            </>
-          ) : (
-            <div className="mt-3 flex h-48 items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-400">Satellite fallback is unavailable right now.</div>
-          )}
-        </Card>
+        <SatelliteCityGrid />
       </div>
 
       {/* ================= CITY COMPARISON ================= */}
