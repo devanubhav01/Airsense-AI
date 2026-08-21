@@ -173,7 +173,7 @@ export default function DashboardPage() {
             className="animate-spin"
           />
 
-          Fetching live AQI for {city}...
+          Loading air-quality monitor for {city}...
 
         </div>
 
@@ -514,15 +514,15 @@ export default function DashboardPage() {
                 );
               })
             ) : (
-              <div className="flex h-full items-center justify-center text-xs text-slate-400">Waiting for live WAQI station grid…</div>
+              <div className="flex h-full items-center justify-center text-xs text-slate-400">Loading station snapshot…</div>
             )}
             <div className="absolute bottom-2 left-2 rounded-md bg-white/90 px-2 py-1 text-[10px] text-slate-500 shadow">
-              Live WAQI stations · {city}
+              Monitoring grid · {city} · cached snapshot
             </div>
           </div>
 
           <p className="mt-3 text-xs text-slate-500">
-            Real station observations inside the city bounds · not synthetic values.
+            Station grid is kept populated from the last stored snapshot so the monitor never goes blank.
           </p>
 
         </Card>
@@ -733,14 +733,35 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h3 className="text-[15px] font-semibold text-slate-900">Satellite Aerosol Context</h3>
-              <p className="text-xs text-slate-500">NASA MODIS Terra aerosol optical depth · GIBS</p>
+              <p className="text-xs text-slate-500">NASA MODIS Terra aerosol optical depth · latest available / cached</p>
             </div>
-            <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-600">Satellite layer</span>
+            <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-600">Historical satellite</span>
           </div>
           {cityData.satelliteImageUrl ? (
-            <img src={cityData.satelliteImageUrl} alt={`${city} NASA aerosol satellite layer`} className="mt-3 h-48 w-full rounded-xl object-cover" loading="lazy" />
+            <>
+              <img
+                src={cityData.satelliteImageUrl}
+                alt={`${city} NASA aerosol satellite layer`}
+                className="mt-3 h-48 w-full rounded-xl object-cover"
+                loading="lazy"
+                onError={(event) => {
+                  event.currentTarget.style.display = "none";
+                  const fallback = event.currentTarget.nextElementSibling;
+                  if (fallback) fallback.style.display = "flex";
+                }}
+              />
+              <div
+                className="mt-3 hidden h-48 items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-400"
+              >
+                NASA image could not be rendered by the browser.
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+                <span>{cityData.dataStatus?.satellite?.source || "NASA GIBS cached"}</span>
+                <span>{cityData.satelliteDate || "historical"}</span>
+              </div>
+            </>
           ) : (
-            <div className="mt-3 flex h-48 items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-400">Satellite layer unavailable right now.</div>
+            <div className="mt-3 flex h-48 items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-400">Satellite fallback is unavailable right now.</div>
           )}
         </Card>
       </div>
