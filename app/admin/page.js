@@ -1,96 +1,239 @@
-
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Download, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
+
+import {
+  Landmark,
+  ShieldCheck,
+  ShieldAlert,
+  Building2,
+} from "lucide-react";
+
 import Card from "@/components/Card";
-import Button from "@/components/Button";
-import { getBand } from "@/lib/data";
+import { BASE } from "@/lib/fallback-data";
+import { getBand, POLLUTANT_LABELS } from "@/lib/data";
 
-export default function AdminPage() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+// Everything on this page is derived from AirSense's own cached city
+// baseline snapshot (lib/fallback-data.js) — the same static numbers used
+// elsewhere in the app. There is no live WAQI/government feed wired into
+// this page; it's a static, government-facing summary view.
 
-  async function load() {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/admin/analytics", { cache: "no-store" });
-      const json = await res.json();
-      if (json.success) setData(json);
-    } finally {
-      setLoading(false);
-    }
-  }
+// Indian NAAQS-style 24-hr reference thresholds, used only to flag whether
+// a city's cached snapshot sits above/below the standard for that pollutant.
+const STANDARDS = {
+  pm25: { limit: 60, unit: "µg/m³" },
+  pm10: { limit: 100, unit: "µg/m³" },
+  no2: { limit: 80, unit: "µg/m³" },
+  so2: { limit: 80, unit: "µg/m³" },
+  co: { limit: 4, unit: "mg/m³" },
+  o3: { limit: 100, unit: "µg/m³" },
+};
 
-  useEffect(() => { load(); }, []);
+const CITY_ROWS = Object.entries(BASE).map(([name, values]) => ({
+  name,
+  ...values,
+  band: getBand(values.aqi),
+}));
 
-  const csv = useMemo(() => {
-    if (!data?.rows?.length) return "";
-    const headers = ["City", "AQI", "Tomorrow", "PM2.5", "PM10", "Humidity", "Wind", "Trend", "Status"];
-    const lines = data.rows.map((r) => [r.name, r.aqi ?? "", r.tomorrow ?? "", r.pm25 ?? "", r.pm10 ?? "", r.humidity ?? "", r.windSpeed ?? "", r.trend, r.status]
-      .map((v) => `"${String(v).replaceAll('"', '""')}"`).join(","));
-    return [headers.join(","), ...lines].join("\\n");
-  }, [data]);
+function compliancePercent(pollutantKey) {
+  const compliant = CITY_ROWS.filter(
+    (row) => row[pollutantKey] <= STANDARDS[pollutantKey].limit
+  ).length;
+  return Math.round((compliant / CITY_ROWS.length) * 100);
+}
 
-  function downloadCSV() {
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "airsense-government-analytics.csv"; a.click();
-    URL.revokeObjectURL(url);
-  }
+export default function AdminAnalyticsPage() {
+  const worstCity = [...CITY_ROWS].sort((a, b) => b.aqi - a.aqi)[0];
+  const bestCity = [...CITY_ROWS].sort((a, b) => a.aqi - b.aqi)[0];
+  const avgAqi = Math.round(
+    CITY_ROWS.reduce((sum, row) => sum + row.aqi, 0) / CITY_ROWS.length
+  );
 
   return (
-    <div className="mx-auto max-w-7xl bg-slate-50 px-5 py-10 lg:px-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2"><ShieldCheck size={18} className="text-indigo-600" /><h1 className="text-2xl font-semibold text-slate-900">Government Analytics</h1></div>
-          <p className="mt-1 text-sm text-slate-500">City-level operational intelligence for prioritising air-quality interventions.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={load}><RefreshCw size={14} /> Refresh</Button>
-          <Button variant="primary" onClick={downloadCSV} disabled={!csv}><Download size={14} /> Export CSV</Button>
-        </div>
+    <div className="mx-auto max-w-6xl px-5 py-10">
+      <div className="flex items-center gap-2.5">
+        <Landmark size={20} className="text-indigo-600" />
+        <h1 className="text-2xl font-semibold text-slate-900">Gov Analytics</h1>
       </div>
 
-      {loading ? (
-        <div className="flex min-h-[40vh] items-center justify-center"><Loader2 size={18} className="animate-spin text-slate-500" /></div>
-      ) : data ? (
-        <>
-          <div className="mt-7 grid gap-5 md:grid-cols-3">
-            <Card><div className="text-xs uppercase tracking-wide text-slate-500">Cities tracked</div><div className="mt-2 text-4xl font-semibold text-slate-900">{data.summary.trackedCities}</div></Card>
-            <Card><div className="text-xs uppercase tracking-wide text-slate-500">Average live AQI</div><div className="mt-2 text-4xl font-semibold text-slate-900">{data.summary.averageAQI ?? "—"}</div></Card>
-            <Card><div className="text-xs uppercase tracking-wide text-slate-500">Severe cities</div><div className="mt-2 text-4xl font-semibold text-red-600">{data.summary.severeCities}</div></Card>
-          </div>
+      <p className="mt-2 max-w-2xl text-sm text-slate-500">
+        City-wise air quality overview for monitoring and policy reference.
+        Figures are drawn from AirSense's cached baseline snapshot, not a
+        live regulatory feed.
+      </p>
 
-          <Card className="mt-6 overflow-hidden !p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead><tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                  {["City", "AQI", "Tomorrow", "PM2.5", "PM10", "Humidity", "Wind", "Trend", "Status"].map((h) => <th key={h} className="px-4 py-3 font-medium">{h}</th>)}
-                </tr></thead>
-                <tbody>{data.rows.map((r) => {
-                  const band = r.aqi == null ? null : getBand(r.aqi);
-                  return <tr key={r.name} className="border-b border-slate-100 last:border-0">
-                    <td className="px-4 py-3 font-medium text-slate-800">{r.name}</td>
-                    <td className={`px-4 py-3 font-semibold ${band?.text || "text-slate-400"}`}>{r.aqi ?? "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">{r.tomorrow ?? "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">{r.pm25 ?? "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">{r.pm10 ?? "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">{r.humidity ?? "—"}%</td>
-                    <td className="px-4 py-3 text-slate-600">{r.windSpeed ?? "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">{r.trend}</td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{r.status}</td>
-                  </tr>;
-                })}</tbody>
-              </table>
-            </div>
-          </Card>
-          <p className="mt-3 text-xs text-slate-400">Data: WAQI ground-station network + Open-Meteo weather. Last generated: {new Date(data.generatedAt).toLocaleString()}</p>
-        </>
-      ) : (
-        <p className="mt-10 text-sm text-red-500">Analytics could not be loaded.</p>
-      )}
+      {/* ================= SUMMARY CARDS ================= */}
+      <div className="mt-7 grid gap-5 md:grid-cols-3">
+        <Card>
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            National Average AQI
+          </div>
+          <div
+            className="mt-2 text-4xl font-semibold text-slate-900"
+            style={{ fontFamily: "'JetBrains Mono', monospace" }}
+          >
+            {avgAqi}
+          </div>
+          <span className="mt-2 inline-block text-[11px] text-slate-500">
+            Across {CITY_ROWS.length} tracked cities
+          </span>
+        </Card>
+
+        <Card>
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Most Affected City
+          </div>
+          <div className="mt-2 text-2xl font-semibold text-red-600">
+            {worstCity.name}
+          </div>
+          <span className="mt-2 inline-block text-[11px] text-slate-500">
+            AQI {worstCity.aqi} · {worstCity.band.label}
+          </span>
+        </Card>
+
+        <Card>
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Cleanest City
+          </div>
+          <div className="mt-2 text-2xl font-semibold text-emerald-600">
+            {bestCity.name}
+          </div>
+          <span className="mt-2 inline-block text-[11px] text-slate-500">
+            AQI {bestCity.aqi} · {bestCity.band.label}
+          </span>
+        </Card>
+      </div>
+
+      {/* ================= AQI COMPARISON CHART ================= */}
+      <Card className="mt-6">
+        <h3 className="text-[15px] font-semibold text-slate-900">
+          City-wise AQI Comparison
+        </h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Cached baseline AQI, colour-coded by severity band.
+        </p>
+
+        <div className="mt-4 h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={CITY_ROWS}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Bar dataKey="aqi" radius={[6, 6, 0, 0]}>
+                {CITY_ROWS.map((row) => (
+                  <Cell key={row.name} fill={row.band.hex} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      {/* ================= COMPLIANCE OVERVIEW ================= */}
+      <Card className="mt-6">
+        <div className="flex items-center gap-2">
+          <ShieldCheck size={16} className="text-indigo-600" />
+          <h3 className="text-[15px] font-semibold text-slate-900">
+            NAAQS Standard Compliance
+          </h3>
+        </div>
+        <p className="mt-1 text-xs text-slate-500">
+          Share of tracked cities within the 24-hr national reference limit for each pollutant.
+        </p>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {Object.keys(STANDARDS).map((key) => {
+            const pct = compliancePercent(key);
+            const ok = pct >= 50;
+            return (
+              <div
+                key={key}
+                className={`rounded-xl border p-3 ${ok ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}
+              >
+                <div className="flex items-center gap-1.5">
+                  {ok ? (
+                    <ShieldCheck size={14} className="text-emerald-600" />
+                  ) : (
+                    <ShieldAlert size={14} className="text-red-600" />
+                  )}
+                  <span className="text-[11px] font-medium text-slate-700">
+                    {POLLUTANT_LABELS[key]}
+                  </span>
+                </div>
+                <div className={`mt-1.5 text-xl font-semibold ${ok ? "text-emerald-600" : "text-red-600"}`}>
+                  {pct}%
+                </div>
+                <span className="text-[10px] text-slate-500">
+                  limit {STANDARDS[key].limit} {STANDARDS[key].unit}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* ================= CITY-WISE DATA TABLE ================= */}
+      <Card className="mt-6 overflow-x-auto">
+        <div className="flex items-center gap-2">
+          <Building2 size={16} className="text-indigo-600" />
+          <h3 className="text-[15px] font-semibold text-slate-900">
+            City-wise Pollutant Breakdown
+          </h3>
+        </div>
+
+        <table className="mt-4 w-full min-w-[720px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">
+              <th className="py-2 pr-4">City</th>
+              <th className="py-2 pr-4">AQI</th>
+              <th className="py-2 pr-4">Band</th>
+              {Object.keys(STANDARDS).map((key) => (
+                <th key={key} className="py-2 pr-4">{POLLUTANT_LABELS[key]}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {CITY_ROWS.map((row) => (
+              <tr key={row.name} className="border-b border-slate-100">
+                <td className="py-2.5 pr-4 font-medium text-slate-900">{row.name}</td>
+                <td className="py-2.5 pr-4" style={{ color: row.band.hex }}>
+                  <span className="font-semibold">{row.aqi}</span>
+                </td>
+                <td className="py-2.5 pr-4">
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${row.band.bg} ${row.band.text}`}>
+                    {row.band.label}
+                  </span>
+                </td>
+                {Object.keys(STANDARDS).map((key) => {
+                  const exceeds = row[key] > STANDARDS[key].limit;
+                  return (
+                    <td
+                      key={key}
+                      className={`py-2.5 pr-4 ${exceeds ? "font-medium text-red-600" : "text-slate-600"}`}
+                    >
+                      {row[key]}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <p className="mt-3 text-[11px] text-slate-400">
+          Red values exceed the 24-hr NAAQS reference limit for that pollutant.
+        </p>
+      </Card>
     </div>
   );
 }
