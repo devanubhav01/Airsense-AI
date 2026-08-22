@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 
@@ -30,6 +30,7 @@ import Button from "@/components/Button";
 import Gauge from "@/components/Gauge";
 import SatelliteCityGrid from "@/components/SatelliteCityGrid";
 import PollutionHeatmap from "@/components/PollutionHeatmap";
+import { useAlert } from "@/components/AlertContext";
 
 import {
   POLLUTANT_LABELS,
@@ -163,6 +164,29 @@ export default function DashboardPage() {
     data: compareData,
     loading: compareLoading
   } = useCityData(compareCity);
+
+  /*
+   * Auto-open a bell alert whenever the selected
+   * city's AQI is Poor / Severe / Hazardous.
+   */
+  const { triggerAlert } = useAlert();
+  const lastAlertKey = useRef(null);
+
+  useEffect(() => {
+    if (!cityData) return;
+
+    const band = getBand(cityData.aqi);
+    const isPoor = cityData.aqi > 100; // Poor, Severe, Hazardous
+    const key = `${city}-${cityData.aqi}`;
+
+    if (isPoor && lastAlertKey.current !== key) {
+      triggerAlert(
+        `${city}'s air quality is currently ${band.label} (AQI ${cityData.aqi}). Limit outdoor exposure, especially for sensitive groups.`,
+        band
+      );
+      lastAlertKey.current = key;
+    }
+  }, [city, cityData, triggerAlert]);
 
   const [stations, setStations] = useState(
     () => getFallbackSnapshot(city).stations
