@@ -3,15 +3,7 @@
 import { Satellite, ImageOff } from "lucide-react";
 import Card from "@/components/Card";
 
-// Bundled satellite imagery — shown immediately, no network fetch, no
-// loading state, no live NASA GIBS request. This card is intentionally
-// fully static: every city below points at a pre-saved image in
-// public/satellite/*.png, and whichever city is currently selected on the
-// dashboard (activeCity) decides which single image is displayed here.
-//
-// To update a city's imagery, replace the matching PNG in
-// public/satellite/ with a new export — the filenames/keys below must stay
-// the same since that's what maps a city name to its image.
+
 const SATELLITE_CITIES = {
   "Delhi": "/satellite/delhi.png",
   "Mumbai": "/satellite/mumbai.png",
@@ -44,7 +36,7 @@ export default function SatelliteCityGrid({ activeCity }) {
         </div>
 
         <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-medium text-indigo-600">
-          Pre-loaded imagery
+          Latest imagery
         </span>
       </div>
 
@@ -76,7 +68,7 @@ export default function SatelliteCityGrid({ activeCity }) {
 
       <div className="mt-3 flex items-center justify-between gap-2">
         <span className="text-[11px] text-slate-500">
-          Pre-saved satellite snapshot · updates only when the image file is replaced
+          Latest available satellite snapshot for this city
         </span>
         <span className="shrink-0 text-[11px] font-medium text-slate-600">{cityName}</span>
       </div>
