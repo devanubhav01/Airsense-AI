@@ -1,5 +1,6 @@
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthContext";
+import { AlertProvider } from "@/components/AlertContext";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import ChatWidget from "@/components/ChatWidget";
@@ -14,10 +15,12 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body style={{ fontFamily: "'Inter', sans-serif" }}>
         <AuthProvider>
-          <Header />
-          {children}
-          <Footer />
-          <ChatWidget />
+          <AlertProvider>
+            <Header />
+            {children}
+            <Footer />
+            <ChatWidget />
+          </AlertProvider>
         </AuthProvider>
       </body>
     </html>
