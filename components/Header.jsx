@@ -5,11 +5,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { Leaf, Bell, ChevronDown, Menu, X, User, FileText, LogOut } from "lucide-react";
 import Button from "./Button";
 import { useAuth } from "./AuthContext";
+import { useAlert } from "./AlertContext";
 
 export default function Header() {
     const pathname = usePathname();
     const router = useRouter();
     const { loggedIn, user, signOut } = useAuth();
+    const { alert, open: alertOpen, triggerAlert, closeAlert, setOpen: setAlertOpen } = useAlert();
     const [mobileOpen, setMobileOpen] = useState(false);
     const [avatarOpen, setAvatarOpen] = useState(false);
 
@@ -66,10 +68,34 @@ export default function Header() {
                         </>
                     ) : (
                         <>
-                            <button className="relative rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900">
-                                <Bell size={18} />
-                                <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-red-500" />
-                            </button>
+                            <div className="relative">
+                                <button
+                                    onClick={() => setAlertOpen((v) => !v)}
+                                    className="relative rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                                >
+                                    <Bell size={18} />
+                                    {alert && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-red-500" />}
+                                </button>
+
+                                {alertOpen && alert && (
+                                    <div className="absolute right-0 mt-2 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl z-50">
+                                        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+                                            <span className="text-sm font-semibold text-slate-900">Air Quality Alert</span>
+                                            <button onClick={closeAlert} className="text-slate-400 hover:text-slate-600">
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                        <div className="px-4 py-3">
+                                            <p className="text-sm text-slate-700">{alert.message}</p>
+                                            {alert.band && (
+                                                <span className={`mt-2 inline-block rounded-full px-2.5 py-0.5 text-[11px] font-medium ${alert.band.bg} ${alert.band.text}`}>
+                                                    {alert.band.label}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                             <div className="relative">
                                 <button onClick={() => setAvatarOpen((v) => !v)} className="flex items-center gap-1.5 rounded-full border border-slate-300 py-1 pl-1 pr-2.5 hover:border-slate-400">
                                     <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-600">{initials}</span>
